@@ -65,15 +65,26 @@ class FsaImporter(
         }
         onProgress(Progress(Stage.IMPORTING, 0, info.length))
         val meta = mapOf(Db.META_ETAG to info.etag, Db.META_LAST_MODIFIED to info.lastModified)
-        val outcome = CountingInputStream(part.inputStream().buffered(1 shl 16)).use { input ->
-            merge(CsvReader(input), previousRows, isStopped, meta) { rows ->
-                if (rows < 0) onProgress(Progress(Stage.LOCATING, 0, 0))
-                else onProgress(Progress(Stage.IMPORTING, input.count, info.length))
+        val outcome = try {
+            CountingInputStream(part.inputStream().buffered(1 shl 16)).use { input ->
+                merge(CsvReader(input), previousRows, isStopped, meta) { rows ->
+                    if (rows < 0) onProgress(Progress(Stage.LOCATING, 0, 0))
+                    else onProgress(Progress(Stage.IMPORTING, input.count, info.length))
+                }
             }
+        } catch (e: CancellationException) {
+            throw e // keep the verified file: the next run merges it without downloading again
+        } catch (e: Exception) {
+            discard() // a file that can't be imported must not be retried forever; fetch afresh next time
+            throw e
         }
+        discard()
+        return outcome
+    }
+
+    private fun discard() {
         part.delete()
         partInfo.delete()
-        return outcome
     }
 
     private data class FileInfo(val etag: String?, val lastModified: String?, val md5: String?, val length: Long)
@@ -96,7 +107,7 @@ class FsaImporter(
      * Brings [part] up to date with the server. Returns null when the server says the data we
      * already imported is current (304). Resumes a partial file with Range/If-Range.
      */
-    private fun download(force: Boolean, previousRows: Int, onProgress: (Progress) -> Unit, isStopped: () -> Boolean): FileInfo? {
+    private fun download(force: Boolean, previousRows: Int, onProgress: (Progress) -> Unit, isStopped: () -> Boolean, retried: Boolean = false): FileInfo? {
         var info = loadInfo()
         if (info == null || !part.exists()) {
             part.delete()
@@ -116,7 +127,8 @@ class FsaImporter(
             .apply {
                 if (info != null && have > 0 && info.etag != null) {
                     header("Range", "bytes=$have-")
-                    header("If-Range", info.etag)
+                    // If-Match (not If-Range, which Azure Blob doesn't document): 412 if the file changed.
+                    header("If-Match", info.etag)
                 } else if (!force && previousRows > 0 && importedEtag != null) {
                     header("If-None-Match", importedEtag)
                 }
@@ -126,11 +138,17 @@ class FsaImporter(
         http.newCall(request).execute().use { response ->
             if (response.code == 304) return null
             val append = response.code == 206
+            // The file changed since the partial download, or the range is no longer valid: start again.
+            val stalePart = response.code == 412 || response.code == 416 ||
+                (append && !resumeMatches(response, have, info!!))
+            if (stalePart) {
+                discard()
+                if (retried) throw IOException("FSA download failed: HTTP ${response.code}")
+                response.close()
+                return download(force, previousRows, onProgress, isStopped, retried = true)
+            }
             if (!append && response.code != 200) throw IOException("FSA download failed: HTTP ${response.code}")
-            if (append) {
-                val range = response.header("Content-Range").orEmpty()
-                if (!range.startsWith("bytes $have-")) throw IOException("Unexpected resume range: $range")
-            } else {
+            if (!append) {
                 val length = response.body.contentLength()
                 info = FileInfo(response.header("ETag"), response.header("Last-Modified"), response.header("Content-MD5")?.trim(), length)
                 part.delete()
@@ -157,6 +175,11 @@ class FsaImporter(
                 }
             }
             onProgress(Progress(Stage.DOWNLOADING, done, total))
+            if (total >= 0 && part.length() > total) {
+                discard()
+                throw IOException("Download larger than expected; starting again next time")
+            }
+            // Shorter: keep it, the next run resumes from here.
             if (total >= 0 && part.length() != total) throw IOException("Download incomplete: ${part.length()} of $total bytes")
             if (total < 0) {
                 info = info!!.copy(length = part.length())
@@ -165,6 +188,15 @@ class FsaImporter(
             verifyMd5(info!!)
             return info
         }
+    }
+
+    /** A 206 continues our file only if it starts where we stopped and is the same version and size. */
+    private fun resumeMatches(response: okhttp3.Response, have: Long, info: FileInfo): Boolean {
+        val m = Regex("""^bytes (\d+)-(\d+)/(\d+)$""").find(response.header("Content-Range").orEmpty().trim()) ?: return false
+        val start = m.groupValues[1].toLong()
+        val total = m.groupValues[3].toLong()
+        val etag = response.header("ETag")
+        return start == have && (info.length < 0 || total == info.length) && (etag == null || etag == info.etag)
     }
 
     private fun verifyMd5(info: FileInfo) {

@@ -125,7 +125,7 @@ class DownloadTest {
 
         respond = { req ->
             assertEquals("bytes=$cut-", req.header("Range"))
-            assertEquals("0xABC", req.header("If-Range"))
+            assertEquals("0xABC", req.header("If-Match"))
             response(
                 req, 206, bytes.copyOfRange(cut, bytes.size),
                 mapOf("ETag" to "0xABC", "Content-Range" to "bytes $cut-${bytes.size - 1}/${bytes.size}"),
@@ -133,6 +133,49 @@ class DownloadTest {
         }
         assertTrue(refresh() is FsaImporter.Outcome.Updated)
         assertTrue(rows() > 200)
+    }
+
+    @Test
+    fun restartsWhenFileChangedSincePartialDownload() {
+        val cut = bytes.size / 2
+        respond = { full(it, failAfter = cut) }
+        runCatching { refresh() }
+        assertEquals(cut.toLong(), File(work, "fsa.csv.part").length())
+        respond = { req ->
+            if (req.header("Range") != null) response(req, 412, ByteArray(0), emptyMap()) else full(req)
+        }
+        assertTrue(refresh() is FsaImporter.Outcome.Updated)
+        assertTrue(rows() > 200)
+        assertEquals(null, requests.last().header("Range"))
+    }
+
+    @Test
+    fun resumeWithWrongTotalStartsAgain() {
+        val cut = bytes.size / 2
+        respond = { full(it, failAfter = cut) }
+        runCatching { refresh() }
+        respond = { req ->
+            if (req.header("Range") != null) {
+                // Server ignored the precondition and served a different, bigger file's tail.
+                response(req, 206, ByteArray(10), mapOf("ETag" to "0xABC", "Content-Range" to "bytes $cut-${cut + 9}/${bytes.size + 50}"))
+            } else {
+                full(req)
+            }
+        }
+        assertTrue(refresh() is FsaImporter.Outcome.Updated)
+    }
+
+    @Test
+    fun unimportableFileIsDiscarded() {
+        val broken = "Nonsense,Header\r\n\"a\",\"b\"\r\n".toByteArray()
+        respond = { req -> response(req, 200, broken, mapOf("ETag" to "0xBAD")) }
+        try {
+            refresh()
+            fail("expected format error")
+        } catch (e: IOException) {
+            assertTrue(e.message!!.contains("format"))
+        }
+        assertFalse(File(work, "fsa.csv.part").exists())
     }
 
     @Test

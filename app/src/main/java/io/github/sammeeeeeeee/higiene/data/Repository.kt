@@ -104,7 +104,9 @@ class Repository(private val db: Db, private val userDb: UserDb, private val pos
         if (centre == null || filters.sort != SortOrder.DISTANCE) {
             // Order in SQL: name matches first, then the rest, each capped after filtering.
             val order = when (filters.sort) {
-                SortOrder.RATING -> "e.rnum IS NULL, e.rnum DESC, e.name"
+                // Same order as rank(): Scottish Pass/Pass and Eat Safe sit among the 0-5 ratings.
+                SortOrder.RATING -> "CASE e.rating WHEN '5' THEN 10 WHEN 'PASS_EAT_SAFE' THEN 9 WHEN '4' THEN 8 WHEN 'PASS' THEN 7 " +
+                    "WHEN '3' THEN 6 WHEN '2' THEN 4 WHEN 'IMPROVEMENT_REQUIRED' THEN 2.5 WHEN '1' THEN 2 WHEN '0' THEN 0 ELSE -1 END DESC, e.name"
                 SortOrder.RECENT -> "e.rdate IS NULL, e.rdate DESC, e.name"
                 else -> "e.name COLLATE NOCASE"
             }

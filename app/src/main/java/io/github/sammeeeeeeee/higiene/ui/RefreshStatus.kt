@@ -36,7 +36,12 @@ fun refreshUiFlow(context: Context, lastError: () -> String? = { null }): Flow<R
         when {
             n?.state == WorkInfo.State.RUNNING -> n.toUi()
             p?.state == WorkInfo.State.RUNNING -> p.toUi()
-            n?.state == WorkInfo.State.ENQUEUED && n.runAttemptCount > 0 -> RefreshUi(retrying = true, failed = lastError())
+            // Ran before and is queued again: after an error, or stopped because Wi-Fi went away.
+            n?.state == WorkInfo.State.ENQUEUED && n.runAttemptCount > 0 -> RefreshUi(
+                retrying = true,
+                failed = lastError(),
+                waitingForWifi = n.constraints.requiredNetworkType == NetworkType.UNMETERED,
+            )
             n?.state == WorkInfo.State.ENQUEUED || n?.state == WorkInfo.State.BLOCKED -> RefreshUi(
                 waiting = true,
                 waitingForWifi = n.constraints.requiredNetworkType == NetworkType.UNMETERED,

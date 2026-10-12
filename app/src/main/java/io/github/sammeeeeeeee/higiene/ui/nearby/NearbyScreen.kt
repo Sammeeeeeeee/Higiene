@@ -611,6 +611,7 @@ private fun Onboarding(refresh: RefreshUi, wifiOnly: Boolean, onStart: (anyNetwo
                         refresh.failed?.let { Text(stringResource(R.string.download_failed, it), color = Color(0xFFFFB4AB), style = MaterialTheme.typography.bodyMedium) }
                         Text(stringResource(R.string.retrying), style = LocalDisplay.current.section, color = hero.headline)
                         PillProgress(null)
+                        if (refresh.waitingForWifi) OutlinePill(stringResource(R.string.use_mobile_data), onClick = { onStart(true) }, onDark = true, modifier = Modifier.fillMaxWidth())
                     }
                     refresh.waiting -> {
                         Text(

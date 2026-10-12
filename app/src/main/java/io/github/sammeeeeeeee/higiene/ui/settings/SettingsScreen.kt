@@ -134,7 +134,10 @@ fun SettingsScreen(onLicences: () -> Unit, vm: SettingsViewModel = viewModel()) 
                         Text(stringResource(R.string.progress_title), style = MaterialTheme.typography.bodyMedium)
                         PillProgress(refresh.fraction, height = 10.dp)
                     }
-                    refresh.retrying -> Text(stringResource(R.string.retrying), style = MaterialTheme.typography.bodyMedium)
+                    refresh.retrying -> {
+                        Text(stringResource(R.string.retrying), style = MaterialTheme.typography.bodyMedium)
+                        if (refresh.waitingForWifi) TextLink(stringResource(R.string.use_mobile_data), onClick = { vm.refreshNow(true) }, color = Fsa.Lime)
+                    }
                     refresh.waiting -> {
                         Text(stringResource(if (refresh.waitingForWifi) R.string.waiting_for_wifi else R.string.waiting_for_network), style = MaterialTheme.typography.bodyMedium)
                         if (refresh.waitingForWifi) TextLink(stringResource(R.string.use_mobile_data), onClick = { vm.refreshNow(true) }, color = Fsa.Lime)
