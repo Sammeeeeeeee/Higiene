@@ -1,0 +1,80 @@
+name: Release
+
+# Every push to main (normally a merged PR) builds the app. If the versionName in
+# app/build.gradle.kts has no matching tag yet, it publishes a GitHub release vX.Y with the APK.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Read version
+        id: version
+        run: |
+          name=$(sed -nE 's/^\s*versionName = "([^"]+)".*/\1/p' app/build.gradle.kts)
+          code=$(sed -nE 's/^\s*versionCode = ([0-9]+).*/\1/p' app/build.gradle.kts)
+          test -n "$name" && test -n "$code"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "tag=v$name" >> "$GITHUB_OUTPUT"
+          if git rev-parse -q --verify "refs/tags/v$name" > /dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Tag v$name already exists; nothing to release."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-java@v6
+        if: steps.version.outputs.exists == 'false'
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install Android platform
+        if: steps.version.outputs.exists == 'false'
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platforms;android-37.0" "build-tools;37.0.0" > /dev/null
+
+      - uses: gradle/actions/setup-gradle@v6
+        if: steps.version.outputs.exists == 'false'
+
+      - name: Test and build
+        if: steps.version.outputs.exists == 'false'
+        run: ./gradlew --stacktrace testDebugUnitTest assembleRelease
+
+      - name: Publish release
+        if: steps.version.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          apk="Higiene-$TAG.apk"
+          cp app/build/outputs/apk/release/app-release.apk "$apk"
+          sha256sum "$apk" > "$apk.sha256"
+          cert=$("$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --print-certs "$apk" | sed -nE 's/.*SHA-256 digest: (.*)/\1/p' | head -1)
+          {
+            echo "Install: download \`$apk\` on your Android phone (Android 8.0 or newer) and open it. Allow installs from your browser or files app when asked."
+            echo
+            echo "On first launch the app downloads the FSA ratings file (about 145 MB, Wi-Fi by default) and the OS postcode file (14 MB)."
+            echo
+            echo "Signing certificate SHA-256: \`$cert\`"
+            echo
+            echo "SHA-256 of the APK: \`$(cut -d' ' -f1 "$apk.sha256")\`"
+            echo
+            echo "## Changes"
+            git log --pretty='- %s' -n 30 "$GITHUB_SHA"
+          } > notes.md
+          gh release create "$TAG" "$apk" "$apk.sha256" --target "$GITHUB_SHA" --title "Higiene $TAG" --notes-file notes.md

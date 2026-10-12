@@ -1,0 +1,256 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Higiene</string>
+
+    <!-- Tabs and common -->
+    <string name="tab_nearby">Nearby</string>
+    <string name="tab_favourites">Favourites</string>
+    <string name="tab_settings">Settings</string>
+    <string name="back">Back</string>
+    <string name="share">Share</string>
+    <string name="favourite">Add to favourites</string>
+    <string name="unfavourite">Remove from favourites</string>
+    <string name="try_again">Try again</string>
+    <string name="dismiss">Dismiss</string>
+    <string name="any">Any</string>
+    <string name="see_all">See all</string>
+    <string name="no_app">No app can open this</string>
+    <string name="not_endorsed">Ratings come from the Food Standards Agency and local councils. Higiene is not made, checked or endorsed by the FSA.</string>
+
+    <!-- Ratings (official FSA wording) -->
+    <string name="rating_5">Very good</string>
+    <string name="rating_4">Good</string>
+    <string name="rating_3">Generally satisfactory</string>
+    <string name="rating_2">Improvement necessary</string>
+    <string name="rating_1">Major improvement necessary</string>
+    <string name="rating_0">Urgent improvement necessary</string>
+    <string name="rating_pass">Pass</string>
+    <string name="rating_pass_eat_safe">Pass and Eat Safe</string>
+    <string name="rating_improvement_required">Improvement required</string>
+    <string name="rating_awaiting_inspection">Awaiting inspection</string>
+    <string name="rating_awaited">Rating awaited</string>
+    <string name="rating_awaiting_publication">Awaiting publication</string>
+    <string name="rating_exempt">Exempt</string>
+    <string name="rating_unknown">Not rated</string>
+    <string name="rating_cd_numeric">Food hygiene rating %1$d: %2$s</string>
+
+    <!-- Score breakdown (FSA score descriptors) -->
+    <string name="score_hygiene">Hygienic food handling</string>
+    <string name="score_structural">Cleanliness and condition of facilities and building</string>
+    <string name="score_confidence">Management of food safety</string>
+    <string name="score_very_good">Very good</string>
+    <string name="score_good">Good</string>
+    <string name="score_generally_satisfactory">Generally satisfactory</string>
+    <string name="score_improvement_necessary">Improvement necessary</string>
+    <string name="score_major_improvement">Major improvement necessary</string>
+    <string name="score_urgent_improvement">Urgent improvement necessary</string>
+
+    <!-- Distances -->
+    <string name="distance_m">%1$d m</string>
+    <string name="distance_km">%1$s km</string>
+    <string name="distance_miles">%1$s mi</string>
+    <string name="distance_yards">%1$d yd</string>
+
+    <!-- Nearby -->
+    <string name="nearby_title_near_you">Near you</string>
+    <string name="nearby_title_near">Near %1$s</string>
+    <string name="nearby_title_where">Food hygiene</string>
+    <string name="use_my_location">Use my location</string>
+    <string name="search_hint">Name, postcode or street</string>
+    <string name="clear_search">Clear search</string>
+    <string name="filters">Filters</string>
+    <string name="filters_count">Filters (%1$d)</string>
+    <string name="filter_4_plus">Rated 4+</string>
+    <string name="filter_hide_exempt">Hide exempt</string>
+    <string name="filter_hide_awaiting">Hide awaiting inspection</string>
+    <string name="filter_recent">Inspected in last year</string>
+    <string name="filter_restaurants">Restaurants and cafes</string>
+    <string name="filter_takeaways">Takeaways</string>
+    <string name="sort_by">Sort by</string>
+    <string name="sort_distance">Distance</string>
+    <string name="sort_rating">Rating</string>
+    <string name="sort_recent">Recently inspected</string>
+    <string name="sort_name">Name</string>
+    <string name="min_rating">Minimum rating</string>
+    <string name="min_rating_scotland">Scotland uses Pass or Improvement required. With a minimum set, Pass stays and Improvement required is hidden.</string>
+    <string name="inspected_within">Inspected within</string>
+    <string name="within_1y">1 year</string>
+    <string name="within_2y">2 years</string>
+    <string name="within_3y">3 years</string>
+    <string name="business_type">Business type</string>
+    <string name="all_types">All types</string>
+    <string name="clear_filters">Clear filters</string>
+    <string name="inspected_short">Inspected %1$s</string>
+    <string name="not_yet_inspected">Not inspected yet</string>
+    <string name="tag_new_rating_pending">New rating pending</string>
+    <string name="tag_approx_position">Position from postcode</string>
+    <string name="tag_no_position">No published address</string>
+    <string name="postcode_found">Postcode %1$s</string>
+    <string name="postcode_approx">Centre of the area, not an exact point.</string>
+    <string name="show_near">Show places near %1$s</string>
+    <string name="whos_cooking_at">Who\'s cooking at %1$s?</string>
+    <string name="no_search_results">No businesses match. Try fewer words, or type a postcode.</string>
+    <string name="no_nearby_results">Nothing matches these filters within 40 miles.</string>
+    <string name="where_body">See the official hygiene ratings of the food businesses nearest to you. Your location stays on this phone.</string>
+    <string name="where_or_postcode">Or type a postcode in the search box.</string>
+    <string name="location_no_permission">Location permission is off. Allow it, or type a postcode.</string>
+    <string name="location_disabled">Location is switched off on this phone.</string>
+    <string name="location_no_fix">Could not find your location. Try again outside, or type a postcode.</string>
+    <string name="open_location_settings">Open location settings</string>
+    <string name="unlocated_body">The FSA publishes no address for these businesses, often because they run from a home (caterers, childminders, market stalls) or are mobile. They are in this council\'s area but we cannot say how far away.</string>
+    <string name="unlocated_show">Show them</string>
+    <string name="unlocated_screen_title">No address: %1$s</string>
+    <string name="list_footer">Ratings from the Food Standards Agency open data. Positions marked \"from postcode\" use the postcode centre.</string>
+    <plurals name="search_results">
+        <item quantity="one">%1$d result</item>
+        <item quantity="other">%1$d results</item>
+    </plurals>
+    <plurals name="unlocated_title">
+        <item quantity="one">%1$d business in %2$s has no published address</item>
+        <item quantity="other">%1$d businesses in %2$s have no published address</item>
+    </plurals>
+
+    <!-- Onboarding and refresh -->
+    <string name="onboarding_title">FOOD HYGIENE, NEAR YOU</string>
+    <string name="onboarding_body">Official ratings for every food business in the UK, on your phone.</string>
+    <string name="onboarding_point_1">Downloads the FSA\'s full ratings file (about 145 MB), then works offline.</string>
+    <string name="onboarding_point_2">Your location never leaves this phone. Distances are worked out here.</string>
+    <string name="onboarding_point_3">England, Wales and Northern Ireland use 0 to 5. Scotland uses Pass or Improvement required.</string>
+    <string name="onboarding_point_4">Finds businesses other apps miss: when the FSA gives no map position, we use the postcode.</string>
+    <string name="onboarding_wifi_note">Waits for Wi-Fi. You can change this in Settings.</string>
+    <string name="onboarding_keep_open">You can leave the app. The download carries on in the background.</string>
+    <string name="download_ratings">Download ratings</string>
+    <string name="download_now_any_network">Download now on any network</string>
+    <string name="download_failed">Download failed: %1$s</string>
+    <string name="waiting_for_wifi">Waiting for Wi-Fi</string>
+    <string name="waiting_for_network">Waiting for a connection</string>
+    <string name="use_mobile_data">Use mobile data this time</string>
+    <string name="progress_title">Updating ratings</string>
+    <string name="progress_checking">Checking for new ratings</string>
+    <string name="progress_downloading_mb">Downloading %1$d of %2$d MB</string>
+    <string name="progress_locating">Placing businesses by postcode</string>
+    <string name="progress_postcodes">Downloading postcode positions (14 MB)</string>
+    <string name="channel_refresh">Ratings updates</string>
+    <string name="channel_changes">Favourite rating changes</string>
+    <string name="change_title">%1$s</string>
+    <string name="change_body">Rating changed: %1$s → %2$s</string>
+    <string name="change_removed">No longer in the FSA data. It may have closed or changed owner.</string>
+
+    <!-- Detail -->
+    <string name="detail_missing">This business is no longer in the FSA data.</string>
+    <string name="inspected_on">Inspected on %1$s</string>
+    <string name="data_as_of">FSA data checked on %1$s</string>
+    <string name="new_rating_pending_title">New rating pending</string>
+    <string name="new_rating_pending_body">This business was inspected recently. The new rating is published after the appeal period.</string>
+    <string name="breakdown_title">What the inspector found</string>
+    <string name="breakdown_note">From the inspector\'s scores at the last inspection.</string>
+    <string name="breakdown_unavailable">The council has not published the score breakdown.</string>
+    <string name="reply_title">The business\'s reply</string>
+    <string name="directions">Directions</string>
+    <string name="fsa_page">FSA page</string>
+    <string name="position_approx">Shown at the centre of its postcode. The FSA gives no exact position.</string>
+    <string name="position_none">The FSA publishes no address for this business.</string>
+    <string name="whos_cooking_title">Who\'s really cooking?</string>
+    <plurals name="same_site">
+        <item quantity="one">%1$d other business is registered at this address:</item>
+        <item quantity="other">%1$d other businesses are registered at this address:</item>
+    </plurals>
+    <plurals name="same_postcode">
+        <item quantity="one">%1$d more at %2$s</item>
+        <item quantity="other">%1$d more at %2$s</item>
+    </plurals>
+    <string name="council_title">Council</string>
+    <string name="council_unknown">Local council</string>
+    <string name="council_body">Contact the council\'s food safety team about this rating or to report a problem.</string>
+    <string name="osm_title">From OpenStreetMap</string>
+    <string name="osm_hours">Opening hours</string>
+    <string name="osm_cuisine">Cuisine</string>
+    <string name="osm_diets">Diets: %1$s</string>
+    <string name="osm_wheelchair">Wheelchair access: %1$s</string>
+    <string name="osm_takeaway">Takeaway: %1$s</string>
+    <string name="osm_delivery">Delivery: %1$s</string>
+    <string name="osm_outdoor">Outdoor seating: %1$s</string>
+    <string name="osm_menu">Menu</string>
+    <string name="osm_sparse">Mapped on OpenStreetMap, but with no extra details yet.</string>
+    <string name="osm_not_mapped">Not linked on OpenStreetMap yet.</string>
+    <string name="osm_throttled">Daily limit of %1$d OpenStreetMap lookups reached, to be fair to the free server. Try again tomorrow.</string>
+    <string name="osm_failed">Could not reach OpenStreetMap.</string>
+    <string name="osm_attribution">© OpenStreetMap contributors (ODbL)</string>
+    <string name="osm_view">View on OpenStreetMap</string>
+    <string name="history_title">Changes seen</string>
+    <string name="history_changed">%1$s: %2$s → %3$s</string>
+    <string name="history_reinspected">%1$s: re-inspected on %2$s</string>
+    <string name="history_removed">%1$s: removed from FSA data</string>
+    <string name="history_note">Changes this phone has seen since it first downloaded the data.</string>
+    <string name="detail_footer">FHRS ID %1$s. Rating from the Food Standards Agency. Not endorsed by the FSA.</string>
+    <string name="share_rating">Food hygiene rating: %1$s</string>
+
+    <!-- Lists -->
+    <string name="whos_cooking_explainer">Every business registered at this postcode, grouped by address. Delivery-only kitchens often share one address.</string>
+    <string name="address_unknown">Address not published</string>
+    <plurals name="address_summary">
+        <item quantity="one">%1$d business at %2$d addresses</item>
+        <item quantity="other">%1$d businesses at %2$d addresses</item>
+    </plurals>
+    <plurals name="unlocated_summary">
+        <item quantity="one">%1$d business</item>
+        <item quantity="other">%1$d businesses</item>
+    </plurals>
+    <plurals name="businesses">
+        <item quantity="one">%1$d business</item>
+        <item quantity="other">%1$d businesses</item>
+    </plurals>
+
+    <!-- Favourites -->
+    <string name="favourites_title">Favourites</string>
+    <string name="favourites_subtitle">You get an alert when a favourite\'s rating changes.</string>
+    <string name="favourites_empty">Tap the heart on any business to keep it here.</string>
+    <string name="favourite_removed">No longer in the FSA data</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_data">Ratings data</string>
+    <string name="settings_rows">%1$s businesses</string>
+    <string name="settings_file_date">FSA file date: %1$s</string>
+    <string name="settings_imported">Last updated: %1$s</string>
+    <string name="settings_checked">Last checked: %1$s</string>
+    <string name="settings_postcodes_ok">Postcode positions: downloaded</string>
+    <string name="settings_postcodes_missing">Postcode positions: not downloaded yet</string>
+    <string name="settings_no_data">No ratings downloaded yet.</string>
+    <string name="settings_last_error">Last problem: %1$s</string>
+    <string name="settings_size_note">Each update downloads the full 145 MB file, but only when the FSA has published a new one (normally once a day).</string>
+    <string name="refresh_now">Update now</string>
+    <string name="settings_refresh">Automatic updates</string>
+    <string name="refresh_daily">Daily</string>
+    <string name="refresh_weekly">Weekly</string>
+    <string name="refresh_manual">Manual only</string>
+    <string name="settings_wifi_only">Wi-Fi only</string>
+    <string name="settings_wifi_only_sub">Do not use mobile data for automatic updates</string>
+    <string name="settings_extras">Extras</string>
+    <string name="settings_osm">OpenStreetMap details</string>
+    <string name="settings_osm_sub">Opening hours, cuisine, website and phone. Asks the OpenStreetMap server about a business when you open it (not your location). Limited to 40 a day.</string>
+    <string name="settings_logos">Chain logos</string>
+    <string name="settings_logos_sub">Logos for chains such as Greggs or Tesco, from Wikimedia Commons or Facebook. Chains are recognised on the phone; only the logo image is downloaded.</string>
+    <string name="settings_miles">Distances in miles</string>
+    <string name="settings_privacy">Privacy</string>
+    <string name="privacy_body">Your location and searches stay on this phone. The app downloads files from the FSA (ratings), Ordnance Survey (postcodes) and, if switched on, OpenStreetMap (details of a business you open) and Wikimedia or Facebook (chain logos). None of these requests include your location. There are no accounts, adverts or analytics.</string>
+    <string name="settings_about">About</string>
+    <string name="about_body">Higiene %1$s. Free software under the GNU GPL v3.</string>
+    <string name="source_code">Source code</string>
+
+    <!-- Licences -->
+    <string name="licences_title">Licences and credits</string>
+    <string name="lic_fsa_title">Food hygiene ratings</string>
+    <string name="lic_fsa_body">Contains public sector information licensed under the Open Government Licence v3.0 (nationalarchives.gov.uk/doc/open-government-licence/version/3). Data from the Food Standards Agency and local authorities. The rating images are trademarks of the Food Standards Agency, shown unaltered under the FSA\'s terms. Higiene is not endorsed by the FSA.</string>
+    <string name="lic_os_title">Postcode positions</string>
+    <string name="lic_os_body">OS Code-Point Open, under the Open Government Licence v3.0.\nContains Ordnance Survey data © Crown copyright and database right %1$s.\nContains Royal Mail data © Royal Mail copyright and database right %1$s.\nContains National Statistics data © Crown copyright and database right %1$s.</string>
+    <string name="lic_osm_title">OpenStreetMap</string>
+    <string name="lic_osm_body">Opening hours and other details © OpenStreetMap contributors, available under the Open Database Licence (openstreetmap.org/copyright). Fetched from the Overpass API.</string>
+    <string name="lic_brands_title">Chain names and logos</string>
+    <string name="lic_brands_body">Chain names from the name-suggestion-index; Wikidata parts are CC0. Logos are trademarks of their owners and come from Wikimedia Commons or Facebook.</string>
+    <string name="lic_libs_title">Software</string>
+    <string name="lic_libs_body">Android Jetpack (AndroidX), Kotlin and kotlinx.coroutines, OkHttp and Coil, all under the Apache License 2.0.</string>
+    <string name="lic_font_title">Inter typeface</string>
+    <string name="lic_app_title">Higiene</string>
+    <string name="lic_app_body">Copyright the Higiene contributors. Licensed under the GNU General Public License v3.0.</string>
+</resources>
