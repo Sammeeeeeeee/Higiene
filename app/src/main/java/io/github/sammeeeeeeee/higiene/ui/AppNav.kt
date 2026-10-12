@@ -5,12 +5,18 @@ import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.SharedTransitionScope
+import androidx.activity.BackEventCompat
+import androidx.compose.animation.EnterExitState
+import androidx.compose.animation.core.animateDp
+import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
@@ -26,6 +32,8 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.NearMe
@@ -87,7 +95,14 @@ fun Modifier.sharedElement(key: String): Modifier {
         this@sharedElement.sharedElement(
             rememberSharedContentState(key),
             scope,
-            boundsTransform = { _, _ -> spring(dampingRatio = 0.8f, stiffness = 380f) },
+            // Same length as the back swipe, and the logo stays put for the first half: while the page is
+            // only being dragged it stays on the page, and it flies home only as the page leaves.
+            boundsTransform = { from, _ ->
+                keyframes {
+                    durationMillis = PREDICTIVE_MS
+                    from at PREDICTIVE_MS / 2 using FastOutSlowInEasing
+                }
+            },
         )
     }
 }
@@ -101,6 +116,7 @@ private val tabs = listOf(
 )
 
 private val NAV_HEIGHT = 68.dp
+private const val PREDICTIVE_MS = 340
 private val NAV_MARGIN = 14.dp
 
 @OptIn(ExperimentalSharedTransitionApi::class)
@@ -133,6 +149,17 @@ fun AppNav(openEstablishment: Long?, onOpenedEstablishment: () -> Unit) {
                     exitTransition = { fadeOut(tween(180)) },
                     popEnterTransition = { fadeIn(tween(260)) + scaleIn(initialScale = 0.96f) },
                     popExitTransition = { fadeOut(tween(200)) + slideOutHorizontally(spring(dampingRatio = 0.9f, stiffness = 500f, visibilityThreshold = IntOffset.VisibilityThreshold)) { it / 6 } },
+                    // Back swipe: the page shrinks and drifts with the finger, stays solid while dragged, then
+                    // fades as it finishes. All parts share one length (PREDICTIVE_MS), so swipe progress maps
+                    // evenly onto the animation. The library default scaled to 70% without fading, which left an
+                    // opaque card hanging over the list before it vanished.
+                    predictivePopEnterTransition = { scaleIn(tween(PREDICTIVE_MS, easing = FastOutSlowInEasing), initialScale = 0.95f) },
+                    predictivePopExitTransition = { edge ->
+                        val towards = if (edge == BackEventCompat.EDGE_RIGHT) -1 else 1
+                        fadeOut(keyframes { durationMillis = PREDICTIVE_MS; 1f at PREDICTIVE_MS / 2 }) +
+                            scaleOut(tween(PREDICTIVE_MS, easing = FastOutSlowInEasing), targetScale = 0.9f) +
+                            slideOutHorizontally(tween(PREDICTIVE_MS, easing = FastOutSlowInEasing)) { w -> towards * w / 16 }
+                    },
                 ) {
                     val open: (Long) -> Unit = { id -> nav.navigate("detail/$id") }
                     val openAddress: (String) -> Unit = { pc -> nav.navigate("address/$pc") }
@@ -204,11 +231,15 @@ fun AppNav(openEstablishment: Long?, onOpenedEstablishment: () -> Unit) {
 }
 
 private fun NavGraphBuilder.tab(route: String, content: @Composable () -> Unit) {
+    val isTab: (NavBackStackEntry) -> Boolean = { e -> tabs.any { it.route == e.destination.route } }
     composable(
         route,
         enterTransition = { fadeIn(tween(220)) },
         exitTransition = { fadeOut(tween(160)) },
-        popEnterTransition = { fadeIn(tween(220)) },
+        // Back from a page: the list comes forward under it, without fading in from blank.
+        popEnterTransition = {
+            if (isTab(initialState)) fadeIn(tween(220)) else scaleIn(tween(PREDICTIVE_MS, easing = FastOutSlowInEasing), initialScale = 0.95f)
+        },
         popExitTransition = { fadeOut(tween(160)) },
     ) {
         CompositionLocalProvider(LocalNavScope provides this) { content() }
@@ -217,6 +248,12 @@ private fun NavGraphBuilder.tab(route: String, content: @Composable () -> Unit) 
 
 private fun NavGraphBuilder.screen(route: String, arguments: List<NamedNavArgument> = emptyList(), content: @Composable (NavBackStackEntry) -> Unit) {
     composable(route, arguments = arguments) { entry ->
-        CompositionLocalProvider(LocalNavScope provides this) { content(entry) }
+        // Round the page's corners as it leaves, so a back swipe looks like a card being put away.
+        val corner by transition.animateDp({ tween(PREDICTIVE_MS, easing = FastOutSlowInEasing) }, label = "corner") {
+            if (it == EnterExitState.PostExit) 32.dp else 0.dp
+        }
+        Box(Modifier.fillMaxSize().clip(RoundedCornerShape(corner))) {
+            CompositionLocalProvider(LocalNavScope provides this@composable) { content(entry) }
+        }
     }
 }

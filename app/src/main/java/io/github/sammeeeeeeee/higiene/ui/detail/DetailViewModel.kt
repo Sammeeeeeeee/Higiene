@@ -8,7 +8,6 @@ import io.github.sammeeeeeeee.higiene.HigieneApp
 import io.github.sammeeeeeeee.higiene.data.Brands
 import io.github.sammeeeeeeee.higiene.data.Establishment
 import io.github.sammeeeeeeee.higiene.data.HistoryEntry
-import io.github.sammeeeeeeee.higiene.data.LocalAuthority
 import io.github.sammeeeeeeee.higiene.data.OsmResult
 import io.github.sammeeeeeeee.higiene.data.Repository
 import io.github.sammeeeeeeee.higiene.data.UserSettings
@@ -34,7 +33,6 @@ data class DetailState(
     val sameSite: List<Establishment> = emptyList(),
     val samePostcode: List<Establishment> = emptyList(),
     val history: List<HistoryEntry> = emptyList(),
-    val authority: LocalAuthority? = null,
     val osm: OsmResult? = null,
     val osmLoading: Boolean = false,
     val dataInfo: Repository.DataInfo? = null,
@@ -68,7 +66,6 @@ class DetailViewModel(app: Application, saved: SavedStateHandle) : AndroidViewMo
                 sameSite = e?.let { graph.repo.sameSite(it) }.orEmpty(),
                 samePostcode = e?.let { graph.repo.samePostcode(it) }.orEmpty(),
                 history = graph.repo.history(id),
-                authority = e?.let { graph.repo.authority(it.laCode) },
                 dataInfo = graph.repo.dataInfo(),
             )
         }
@@ -76,7 +73,7 @@ class DetailViewModel(app: Application, saved: SavedStateHandle) : AndroidViewMo
         if (s.osmDetails && _state.value.osm == null && loaded.est != null) loadOsm(s.brandLogos)
     }
 
-    fun loadOsm(logos: Boolean = settings.value.brandLogos) {
+    private fun loadOsm(logos: Boolean) {
         if (_state.value.osmLoading) return
         _state.update { it.copy(osmLoading = true) }
         viewModelScope.launch {

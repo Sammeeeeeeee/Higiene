@@ -25,6 +25,11 @@ data class OsmDetails(val type: String, val osmId: Long, val tags: Map<String, S
             .map { it.replace('_', '-') }
     val osmUrl get() = "https://www.openstreetmap.org/$type/$osmId"
 
+    /** True when there is something worth showing; a bare match with only a name is not. */
+    val hasDetails: Boolean
+        get() = openingHours != null || cuisine.isNotEmpty() || diets.isNotEmpty() || website != null || phone != null ||
+            email != null || menu != null || wheelchair != null || takeaway != null || delivery != null || outdoorSeating != null
+
     private companion object {
         /** Anyone can edit OSM: accept only web links, adding https:// when the scheme is missing. */
         fun webUrl(raw: String): String? {

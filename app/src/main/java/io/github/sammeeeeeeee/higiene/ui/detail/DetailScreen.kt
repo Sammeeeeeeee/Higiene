@@ -79,7 +79,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.sammeeeeeeee.higiene.R
 import io.github.sammeeeeeeee.higiene.data.Establishment
-import io.github.sammeeeeeeee.higiene.data.OsmClient
 import io.github.sammeeeeeeee.higiene.data.OsmDetails
 import io.github.sammeeeeeeee.higiene.data.OsmResult
 import io.github.sammeeeeeeee.higiene.data.Postcodes
@@ -177,7 +176,7 @@ fun DetailScreen(onBack: () -> Unit, onOpen: (Long) -> Unit, onOpenAddress: (Str
         when {
             state.loading -> Box(Modifier.fillMaxWidth().padding(48.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Fsa.Green) }
             e == null -> Text(stringResource(R.string.detail_missing), Modifier.padding(24.dp))
-            else -> Body(state, e, settings.osmDetails, onOpen, onOpenAddress, onLoadOsm = { vm.loadOsm() })
+            else -> Body(state, e, settings.osmDetails, onOpen, onOpenAddress)
         }
     }
 }
@@ -208,7 +207,6 @@ private fun Body(
     osmEnabled: Boolean,
     onOpen: (Long) -> Unit,
     onOpenAddress: (String) -> Unit,
-    onLoadOsm: () -> Unit,
 ) {
     val context = LocalContext.current
     Column(
@@ -320,37 +318,14 @@ private fun Body(
             }
         }
 
-        // OpenStreetMap ----------------------------------------------------------------------------
-        if (osmEnabled) {
+        // OpenStreetMap: shown only when it has details for this business --------------------------
+        val osm = (state.osm as? OsmResult.Found)?.details
+        if (osmEnabled && osm != null && osm.hasDetails) {
             Reveal(5) {
                 InfoCard {
                     Text(stringResource(R.string.osm_title), style = LocalDisplay.current.section)
-                    when (val osm = state.osm) {
-                        null -> if (state.osmLoading) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp, color = Fsa.Green)
-                        is OsmResult.Found -> OsmContent(osm.details)
-                        OsmResult.NotMapped -> Text(stringResource(R.string.osm_not_mapped), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        OsmResult.DailyLimit -> Text(stringResource(R.string.osm_throttled, OsmClient.DAILY_CAP), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        OsmResult.Busy -> {
-                            Text(stringResource(R.string.osm_busy), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            TextLink(stringResource(R.string.try_again), onClick = onLoadOsm)
-                        }
-                        is OsmResult.Failed -> {
-                            Text(stringResource(R.string.osm_failed), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            TextLink(stringResource(R.string.try_again), onClick = onLoadOsm)
-                        }
-                    }
+                    OsmContent(osm)
                 }
-            }
-        }
-
-        // Council ------------------------------------------------------------------------------------
-        Reveal(6) {
-            InfoCard {
-                Text(stringResource(R.string.council_title), style = LocalDisplay.current.section)
-                Text(state.authority?.name ?: stringResource(R.string.council_unknown), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text(stringResource(R.string.council_body), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                state.authority?.email?.let { email -> ContactRow(Icons.Rounded.Mail, email) { open(context, Uri.parse("mailto:$email")) } }
-                state.authority?.url?.let { url -> ContactRow(Icons.Rounded.Public, url.removePrefix("http://").removePrefix("https://").removeSuffix("/")) { open(context, Uri.parse(url)) } }
             }
         }
 
@@ -506,9 +481,6 @@ private fun OsmContent(d: OsmDetails) {
     d.phone?.let { p -> ContactRow(Icons.Rounded.Phone, p) { open(context, Uri.parse("tel:" + p.replace(" ", "")), Intent.ACTION_DIAL) } }
     d.email?.let { m -> ContactRow(Icons.Rounded.Mail, m) { open(context, Uri.parse("mailto:$m")) } }
     d.menu?.let { m -> TextLink(stringResource(R.string.osm_menu), onClick = { open(context, Uri.parse(m)) }) }
-    if (d.openingHours == null && d.cuisine.isEmpty() && facts.isEmpty() && d.website == null && d.phone == null) {
-        Text(stringResource(R.string.osm_sparse), style = MaterialTheme.typography.bodyMedium)
-    }
     Row(verticalAlignment = Alignment.CenterVertically) {
         TextLink(stringResource(R.string.osm_attribution), onClick = { open(context, Uri.parse("https://www.openstreetmap.org/copyright")) }, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.weight(1f))

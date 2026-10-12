@@ -15,12 +15,12 @@ Needs Android 8.0 or newer.
 - Nearby list sorted by distance: official rating badge, distance, business type, inspection date, chain logo.
 - Filters: business type, minimum rating, hide exempt, hide awaiting inspection, inspected within 1–3 years. Sort by distance, rating, recency or name.
 - Search by name, street or postcode (full, sector such as `E1 6`, or outcode such as `E1`), all offline.
-- Detail page: score breakdown, new-rating-pending notice, the business's right to reply, council contact, FSA page, directions, share.
+- Detail page: score breakdown, new-rating-pending notice, the business's right to reply, FSA page, directions, share.
 - Favourites, with a notification when a rating changes.
 - Whole UK: 0–5 in England, Wales and Northern Ireland; Pass / Improvement required in Scotland. Welsh councils' businesses get the bilingual badge.
 - Finds businesses other apps miss: about 1 in 8 restaurants have no map position in the FSA data. Higiene places them at their postcode centre. On the October 2026 file this cuts restaurants without a position from 17,689 to 6,008 (the rest publish no postcode, mostly home or mobile caterers; the app lists them by council).
 - **Who's really cooking?** Every business registered at the same address or postcode (delivery-only kitchens often share one).
-- OpenStreetMap extras on the detail page: opening hours, cuisine, website, phone, diets.
+- OpenStreetMap extras on the detail page, shown only when OpenStreetMap has them: opening hours, cuisine, website, phone, diets.
 
 ## How it works
 
@@ -29,7 +29,7 @@ Needs Android 8.0 or newer.
 | Ratings | [FSA bulk CSV](https://ratings.food.gov.uk/open-data) (`FHRS_All_en-GB.csv`) | Daily, Wi-Fi only by default; skipped via ETag when unchanged | [OGL v3](https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/) |
 | Rating badges | [FSA images.zip](https://ratings.food.gov.uk/open-data), bundled unaltered | With app updates | FSA trademarks, [FSA terms](https://ratings.food.gov.uk/terms-and-conditions) |
 | Postcode positions (GB) | [OS Code-Point Open](https://www.ordnancesurvey.co.uk/products/code-point-open) | Checked monthly | OGL v3 |
-| Council contacts | [FSA API `/Authorities`](https://api.ratings.food.gov.uk/help) | Weekly | OGL v3 |
+| Council names | [FSA API `/Authorities`](https://api.ratings.food.gov.uk/help) | Weekly | OGL v3 |
 | Hours, cuisine, website | [OpenStreetMap](https://www.openstreetmap.org/copyright) via Overpass, by `fhrs:id`, only for businesses you open | Cached 30 days; max 40 lookups a day | ODbL |
 | Chain names | [name-suggestion-index](https://github.com/osmlab/name-suggestion-index) (`tools/build_brands.py`) | With app updates | BSD-3-Clause |
 | Chain logos | Wikimedia Commons, then Facebook | Cached | Owners' trademarks |

@@ -149,7 +149,7 @@
     <string name="new_rating_pending_body">This business was inspected recently. The new rating is published after the appeal period.</string>
     <string name="breakdown_title">What the inspector found</string>
     <string name="breakdown_note">From the inspector\'s scores at the last inspection.</string>
-    <string name="breakdown_unavailable">The council has not published the score breakdown.</string>
+    <string name="breakdown_unavailable">No score breakdown has been published for this rating.</string>
     <string name="reply_title">The business\'s reply</string>
     <string name="directions">Directions</string>
     <string name="fsa_page">FSA page</string>
@@ -164,9 +164,6 @@
         <item quantity="one">%1$d more at %2$s</item>
         <item quantity="other">%1$d more at %2$s</item>
     </plurals>
-    <string name="council_title">Council</string>
-    <string name="council_unknown">Local council</string>
-    <string name="council_body">Contact the council\'s food safety team about this rating or to report a problem.</string>
     <string name="osm_title">From OpenStreetMap</string>
     <string name="osm_hours">Opening hours</string>
     <string name="osm_cuisine">Cuisine</string>
@@ -176,11 +173,6 @@
     <string name="osm_delivery">Delivery: %1$s</string>
     <string name="osm_outdoor">Outdoor seating: %1$s</string>
     <string name="osm_menu">Menu</string>
-    <string name="osm_sparse">Mapped on OpenStreetMap, but with no extra details yet.</string>
-    <string name="osm_not_mapped">Not linked on OpenStreetMap yet.</string>
-    <string name="osm_throttled">Daily limit of %1$d OpenStreetMap lookups reached, to be fair to the free server. Try again tomorrow.</string>
-    <string name="osm_failed">Could not reach OpenStreetMap.</string>
-    <string name="osm_busy">The OpenStreetMap server is busy. Try again in a minute.</string>
     <string name="osm_attribution">© OpenStreetMap contributors (ODbL)</string>
     <string name="osm_view">View on OpenStreetMap</string>
     <string name="history_title">Changes seen</string>
