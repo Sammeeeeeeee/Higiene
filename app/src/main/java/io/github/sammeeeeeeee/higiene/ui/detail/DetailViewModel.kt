@@ -27,6 +27,7 @@ data class DetailState(
     val est: Establishment? = null,
     val distanceM: Double? = null,
     val favourite: Boolean = false,
+    val favouriteName: String? = null,
     val brand: Brands.Brand? = null,
     /** From OSM brand:wikidata; preferred over name matching. */
     val osmBrand: Brands.Brand? = null,
@@ -62,6 +63,7 @@ class DetailViewModel(app: Application, saved: SavedStateHandle) : AndroidViewMo
                 est = e,
                 distanceM = if (e?.lat != null && e.lon != null && centre != null) Repository.distance(centre.lat, centre.lon, e.lat, e.lon) else null,
                 favourite = graph.repo.isFavourite(id),
+                favouriteName = graph.repo.favouriteName(id),
                 brand = if (e != null && s.brandLogos) graph.brands.match(e.name) else null,
                 sameSite = e?.let { graph.repo.sameSite(it) }.orEmpty(),
                 samePostcode = e?.let { graph.repo.samePostcode(it) }.orEmpty(),
@@ -88,10 +90,10 @@ class DetailViewModel(app: Application, saved: SavedStateHandle) : AndroidViewMo
     }
 
     fun toggleFavourite(): Boolean {
-        val e = _state.value.est ?: return false
         val on = !_state.value.favourite
+        val name = _state.value.est?.name ?: _state.value.favouriteName ?: return false
         _state.update { it.copy(favourite = on) }
-        viewModelScope.launch(Dispatchers.IO) { graph.repo.setFavourite(e.id, e.name, on) }
+        viewModelScope.launch(Dispatchers.IO) { graph.repo.setFavourite(id, name, on) }
         return on
     }
 }

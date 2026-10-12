@@ -9,6 +9,32 @@ import android.database.sqlite.SQLiteOpenHelper
  * details). Write-ahead logging lets the UI keep reading while a refresh runs in one transaction.
  */
 /**
+ * The user's own data (favourites, cached OpenStreetMap details) lives in a separate file so that
+ * writing it never waits behind a ratings import holding the main database's write lock.
+ */
+class UserDb(context: Context) : SQLiteOpenHelper(context, NAME, null, VERSION) {
+    init {
+        setWriteAheadLoggingEnabled(true)
+    }
+
+    override fun onCreate(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE fav(id INTEGER PRIMARY KEY, name TEXT NOT NULL, added INTEGER NOT NULL)")
+        db.execSQL("CREATE TABLE osm(id INTEGER PRIMARY KEY, fetched INTEGER NOT NULL, json TEXT)")
+        db.execSQL("CREATE TABLE osm_calls(at INTEGER NOT NULL)")
+    }
+
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {}
+
+    fun favouriteIds(): Set<Long> =
+        readableDatabase.rawQuery("SELECT id FROM fav", null).use { c -> buildSet { while (c.moveToNext()) add(c.getLong(0)) } }
+
+    companion object {
+        const val NAME = "user.db"
+        const val VERSION = 1
+    }
+}
+
+/**
  * Positions are stored as integer microdegrees (lat/lon × 1e6) to keep the 600k-row table and its
  * index small.
  */
@@ -59,12 +85,10 @@ class Db(context: Context) : SQLiteOpenHelper(context, NAME, null, VERSION) {
         db.execSQL("CREATE VIRTUAL TABLE est_fts USING fts4(content=\"est\", name, address, pc, tokenize=unicode61)")
         db.execSQL("CREATE TABLE btype(id INTEGER PRIMARY KEY, name TEXT NOT NULL)")
         db.execSQL("CREATE TABLE la(code INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT, url TEXT)")
-        db.execSQL("CREATE TABLE fav(id INTEGER PRIMARY KEY, name TEXT NOT NULL, added INTEGER NOT NULL)")
         db.execSQL(
             "CREATE TABLE history(id INTEGER NOT NULL, seen INTEGER NOT NULL, old_rating TEXT, new_rating TEXT, old_date INTEGER, new_date INTEGER)",
         )
         db.execSQL("CREATE INDEX history_id ON history(id)")
-        db.execSQL("CREATE TABLE osm(id INTEGER PRIMARY KEY, fetched INTEGER NOT NULL, json TEXT)")
         db.execSQL("CREATE TABLE area(code TEXT PRIMARY KEY, lat REAL NOT NULL, lon REAL NOT NULL) WITHOUT ROWID")
         db.execSQL("CREATE TABLE meta(k TEXT PRIMARY KEY, v TEXT) WITHOUT ROWID")
     }

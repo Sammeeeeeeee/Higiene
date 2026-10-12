@@ -58,7 +58,9 @@ class ListViewModel(app: Application, saved: SavedStateHandle) : AndroidViewMode
     val pc: String? = saved.get<String>("pc")
     val la: Int? = saved.get<Int>("la")
     val settings: StateFlow<UserSettings> = graph.settings.flow.stateIn(viewModelScope, SharingStarted.Eagerly, UserSettings())
-    val councilName: String? get() = la?.let { graph.repo.authority(it)?.name }
+    val councilName: StateFlow<String?> = kotlinx.coroutines.flow.flow { emit(la?.let { graph.repo.authority(it)?.name }) }
+        .flowOn(Dispatchers.IO)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     val sites: StateFlow<List<Site>?> = combine(graph.repo.version, graph.settings.flow) { _, s -> s }
         .map { s ->
@@ -84,13 +86,20 @@ class ListViewModel(app: Application, saved: SavedStateHandle) : AndroidViewMode
 fun ListScreen(onBack: () -> Unit, onOpen: (Long) -> Unit, vm: ListViewModel = viewModel()) {
     val sites by vm.sites.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
+    val council by vm.councilName.collectAsStateWithLifecycle()
     val total = sites?.sumOf { it.items.size } ?: 0
     Column(Modifier.fillMaxSize()) {
         HeroHeader(
-            title = if (vm.pc != null) stringResource(R.string.whos_cooking_at, Postcodes.format(vm.pc)) else stringResource(R.string.unlocated_screen_title, vm.councilName ?: ""),
+            title = if (vm.pc != null) stringResource(R.string.whos_cooking_at, Postcodes.format(vm.pc)) else stringResource(R.string.unlocated_screen_title, council ?: ""),
             onBack = onBack,
             subtitle = sites?.let {
-                if (vm.pc != null) pluralStringResource(R.plurals.address_summary, total, total, it.size)
+                if (vm.pc != null) {
+                    stringResource(
+                        R.string.address_summary,
+                        pluralStringResource(R.plurals.businesses, total, total),
+                        pluralStringResource(R.plurals.addresses, it.size, it.size),
+                    )
+                }
                 else pluralStringResource(R.plurals.unlocated_summary, total, total)
             },
         )

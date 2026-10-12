@@ -9,10 +9,9 @@ import android.location.LocationManager
 import android.os.CancellationSignal
 import androidx.core.content.ContextCompat
 import androidx.core.location.LocationManagerCompat
-import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.Executors
-import kotlin.coroutines.resume
 
 /**
  * One-shot device location using the platform LocationManager (no Google Play Services).
@@ -41,15 +40,29 @@ object LocationHelper {
             .filter { System.currentTimeMillis() - it.time < 2 * 60_000 }
             .minByOrNull { it.accuracy }
         if (recent != null) return recent
-        val provider = providers.firstOrNull() ?: return null
+        if (providers.isEmpty()) return null
+        // Ask every enabled provider at once and take the first fix: indoors GPS may never answer
+        // while the network provider replies in about a second.
         val fresh = withTimeoutOrNull(timeoutMs) {
-            suspendCancellableCoroutine { cont ->
-                val signal = CancellationSignal()
-                cont.invokeOnCancellation { signal.cancel() }
-                LocationManagerCompat.getCurrentLocation(lm, provider, signal, executor) { loc -> if (cont.isActive) cont.resume(loc) }
+            val fixes = Channel<Location>(Channel.UNLIMITED)
+            val signals = providers.map { provider ->
+                CancellationSignal().also { signal ->
+                    runCatching {
+                        LocationManagerCompat.getCurrentLocation(lm, provider, signal, executor) { loc -> if (loc != null) fixes.trySend(loc) }
+                    }
+                }
+            }
+            try {
+                fixes.receive()
+            } finally {
+                signals.forEach { it.cancel() }
             }
         }
-        return fresh ?: providers.mapNotNull { runCatching { lm.getLastKnownLocation(it) }.getOrNull() }.maxByOrNull { it.time }
+        if (fresh != null) return fresh
+        // Last resort: a cached fix, but only a reasonably recent one.
+        return providers.mapNotNull { runCatching { lm.getLastKnownLocation(it) }.getOrNull() }
+            .filter { System.currentTimeMillis() - it.time < 30 * 60_000 }
+            .maxByOrNull { it.time }
     }
 
     fun isLocationEnabled(context: Context): Boolean =

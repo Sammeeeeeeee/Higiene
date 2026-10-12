@@ -17,12 +17,13 @@ import io.github.sammeeeeeeee.higiene.R
 import io.github.sammeeeeeeee.higiene.data.FavouriteChange
 import io.github.sammeeeeeeee.higiene.data.FsaImporter
 import io.github.sammeeeeeeee.higiene.ui.label
+import io.github.sammeeeeeeee.higiene.ui.pretty
 
 object Notifications {
     private const val CH_PROGRESS = "refresh"
     private const val CH_CHANGES = "rating_changes"
     const val PROGRESS_ID = 1
-    private const val CHANGES_BASE_ID = 1000
+    private const val CHANGES_ID = 1000
     const val EXTRA_ESTABLISHMENT = "establishment"
 
     fun createChannels(context: Context) {
@@ -41,6 +42,7 @@ object Notifications {
             postcodes -> context.getString(R.string.progress_postcodes)
             stage == FsaImporter.Stage.DOWNLOADING && total > 0 ->
                 context.getString(R.string.progress_downloading_mb, done / 1_000_000, total / 1_000_000)
+            stage == FsaImporter.Stage.IMPORTING -> context.getString(R.string.progress_importing)
             stage == FsaImporter.Stage.LOCATING -> context.getString(R.string.progress_locating)
             else -> context.getString(R.string.progress_checking)
         }
@@ -64,10 +66,10 @@ object Notifications {
                 .putExtra(EXTRA_ESTABLISHMENT, c.id)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             val pi = PendingIntent.getActivity(context, c.id.toInt(), intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-            val body = if (c.new == null) {
-                context.getString(R.string.change_removed)
-            } else {
-                context.getString(R.string.change_body, c.old.label(context), c.new.label(context))
+            val body = when {
+                c.new == null -> context.getString(R.string.change_removed)
+                c.new == c.old -> context.getString(R.string.change_reinspected, c.newDate?.pretty() ?: "", c.new.label(context))
+                else -> context.getString(R.string.change_body, c.old.label(context), c.new.label(context))
             }
             val n = NotificationCompat.Builder(context, CH_CHANGES)
                 .setSmallIcon(R.drawable.ic_notification)
@@ -77,7 +79,8 @@ object Notifications {
                 .setContentIntent(pi)
                 .setAutoCancel(true)
                 .build()
-            runCatching { nm.notify(CHANGES_BASE_ID + (c.id % 100_000).toInt(), n) }
+            // Tag by FHRS id so two favourites never replace each other's alert.
+            runCatching { nm.notify(c.id.toString(), CHANGES_ID, n) }
         }
     }
 }

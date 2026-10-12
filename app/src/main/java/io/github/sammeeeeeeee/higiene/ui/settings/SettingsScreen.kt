@@ -66,7 +66,9 @@ import java.util.Locale
 class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     private val graph = (app as HigieneApp).graph
     val settings: StateFlow<UserSettings> = graph.settings.flow.stateIn(viewModelScope, SharingStarted.Eagerly, UserSettings())
-    val refresh: StateFlow<RefreshUi> = refreshUiFlow(app).stateIn(viewModelScope, SharingStarted.Eagerly, RefreshUi())
+    val refresh: StateFlow<RefreshUi> = refreshUiFlow(app) { graph.db.meta(RefreshWorker.META_LAST_ERROR) }
+        .flowOn(Dispatchers.IO)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, RefreshUi())
 
     data class Info(val data: Repository.DataInfo, val lastError: String?)
 
@@ -132,6 +134,7 @@ fun SettingsScreen(onLicences: () -> Unit, vm: SettingsViewModel = viewModel()) 
                         Text(stringResource(R.string.progress_title), style = MaterialTheme.typography.bodyMedium)
                         PillProgress(refresh.fraction, height = 10.dp)
                     }
+                    refresh.retrying -> Text(stringResource(R.string.retrying), style = MaterialTheme.typography.bodyMedium)
                     refresh.waiting -> {
                         Text(stringResource(if (refresh.waitingForWifi) R.string.waiting_for_wifi else R.string.waiting_for_network), style = MaterialTheme.typography.bodyMedium)
                         if (refresh.waitingForWifi) TextLink(stringResource(R.string.use_mobile_data), onClick = { vm.refreshNow(true) }, color = Fsa.Lime)

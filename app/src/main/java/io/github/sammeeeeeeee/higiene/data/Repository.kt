@@ -11,7 +11,7 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 /** All reads (and the user's own writes) against the local database. Call from a background thread. */
-class Repository(private val db: Db, private val postcodeIndex: () -> PostcodeIndex?) {
+class Repository(private val db: Db, private val userDb: UserDb, private val postcodeIndex: () -> PostcodeIndex?) {
 
     private val _version = MutableStateFlow(0L)
 
@@ -85,30 +85,71 @@ class Repository(private val db: Db, private val postcodeIndex: () -> PostcodeIn
         return Nearby(sorted, radius, unlocated)
     }
 
-    /** Text search over names first, then addresses and postcodes. */
+    /**
+     * Text search over names, addresses and postcodes. Every match is considered (filters applied in
+     * SQL), then the best [limit] are kept: name matches first, then by the chosen sort.
+     */
     fun search(query: String, centre: Centre?, filters: Filters, limit: Int = 300): List<Listing> {
         // Lower-case so words like "and"/"or" are never read as FTS operators.
         val tokens = query.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }
         if (tokens.isEmpty()) return emptyList()
-        val prefix = tokens.joinToString(" ") { if (it.length >= 2) "$it*" else it }
-        val nameOnly = tokens.joinToString(" ") { "name:" + if (it.length >= 2) "$it*" else it }
+        // Prefix-match words of 3+ letters; shorter ones must match whole words (keeps "ab*" cheap).
+        fun term(t: String) = if (t.length >= 3) "$t*" else t
+        val all = tokens.joinToString(" ") { term(it) }
+        val nameOnly = tokens.joinToString(" ") { "name:" + term(it) }
         val (where, args) = filterSql(filters)
-        fun run(match: String): List<Listing> {
-            val sql = "$SELECT_EST JOIN (SELECT docid FROM est_fts WHERE est_fts MATCH ? LIMIT 3000) f ON e.id = f.docid WHERE 1=1$where"
-            return db.readableDatabase.rawQuery(sql, arrayOf(match) + args).use { c ->
-                buildList {
-                    while (c.moveToNext()) {
-                        val e = c.toEstablishment()
-                        add(Listing(e, if (centre != null && e.lat != null && e.lon != null) distance(centre.lat, centre.lon, e.lat, e.lon) else null))
+        val r = db.readableDatabase
+        val fts = "JOIN (SELECT docid FROM est_fts WHERE est_fts MATCH ?) f ON e.id = f.docid"
+
+        if (centre == null || filters.sort != SortOrder.DISTANCE) {
+            // Order in SQL: name matches first, then the rest, each capped after filtering.
+            val order = when (filters.sort) {
+                SortOrder.RATING -> "e.rnum IS NULL, e.rnum DESC, e.name"
+                SortOrder.RECENT -> "e.rdate IS NULL, e.rdate DESC, e.name"
+                else -> "e.name COLLATE NOCASE"
+            }
+            fun page(match: String, n: Int, exclude: Set<Long>) =
+                r.rawQuery("$SELECT_EST $fts WHERE 1=1$where ORDER BY $order LIMIT ${n + exclude.size}", arrayOf(match) + args).use { c ->
+                    buildList {
+                        while (c.moveToNext() && size < n) {
+                            val e = c.toEstablishment()
+                            if (e.id in exclude) continue
+                            add(Listing(e, if (centre != null && e.lat != null && e.lon != null) distance(centre.lat, centre.lon, e.lat, e.lon) else null))
+                        }
                     }
+                }
+            val byName = page(nameOnly, limit, emptySet())
+            if (byName.size >= limit) return byName
+            return byName + page(all, limit - byName.size, byName.mapTo(HashSet()) { it.est.id })
+        }
+
+        // Nearest first: rank every match by (name match, distance) with a bounded heap.
+        val nameIds = LongHashSet()
+        r.rawQuery("SELECT docid FROM est_fts WHERE est_fts MATCH ?", arrayOf(nameOnly)).use { c -> while (c.moveToNext()) nameIds.add(c.getLong(0)) }
+        val heap = java.util.PriorityQueue<Pair<Double, Long>>(limit + 1, compareByDescending { it.first })
+        r.rawQuery("SELECT e.id, e.lat, e.lon FROM est e $fts WHERE 1=1$where", arrayOf(all) + args).use { c ->
+            while (c.moveToNext()) {
+                val id = c.getLong(0)
+                val d = if (c.isNull(1)) UNLOCATED else distance(centre.lat, centre.lon, c.getLong(1) / 1e6, c.getLong(2) / 1e6)
+                val score = (if (id in nameIds) 0.0 else NOT_NAME) + d
+                if (heap.size < limit) heap.add(score to id)
+                else if (score < heap.peek()!!.first) {
+                    heap.poll()
+                    heap.add(score to id)
                 }
             }
         }
-        val byName = sortForSearch(run(nameOnly), filters.sort)
-        if (byName.size >= limit) return byName.take(limit)
-        val seen = byName.mapTo(HashSet()) { it.est.id }
-        val rest = sortForSearch(run(prefix).filter { it.est.id !in seen }, filters.sort)
-        return (byName + rest).take(limit)
+        if (heap.isEmpty()) return emptyList()
+        val ranked = heap.sortedBy { it.first }.map { it.second }
+        val byId = HashMap<Long, Establishment>(ranked.size * 2)
+        ranked.chunked(500).forEach { chunk ->
+            r.rawQuery("$SELECT_EST WHERE e.id IN (${chunk.joinToString(",")})", null).use { c ->
+                while (c.moveToNext()) c.toEstablishment().let { byId[it.id] = it }
+            }
+        }
+        return ranked.mapNotNull { id ->
+            byId[id]?.let { e -> Listing(e, if (e.lat != null && e.lon != null) distance(centre.lat, centre.lon, e.lat, e.lon) else null) }
+        }
     }
 
     /** Resolves a full postcode, sector ("SW1A 1") or outcode ("SW1A") to a point, fully offline. */
@@ -177,7 +218,7 @@ class Repository(private val db: Db, private val postcodeIndex: () -> PostcodeIn
     data class Favourite(val id: Long, val name: String, val listing: Listing?)
 
     fun favourites(centre: Centre?): List<Favourite> {
-        val favs = db.readableDatabase.rawQuery("SELECT id, name FROM fav ORDER BY added DESC", null).use { c ->
+        val favs = userDb.readableDatabase.rawQuery("SELECT id, name FROM fav ORDER BY added DESC", null).use { c ->
             buildList { while (c.moveToNext()) add(c.getLong(0) to c.getString(1)) }
         }
         return favs.map { (id, name) ->
@@ -187,10 +228,14 @@ class Repository(private val db: Db, private val postcodeIndex: () -> PostcodeIn
     }
 
     fun isFavourite(id: Long): Boolean =
-        db.readableDatabase.rawQuery("SELECT 1 FROM fav WHERE id=?", arrayOf(id.toString())).use { it.moveToFirst() }
+        userDb.readableDatabase.rawQuery("SELECT 1 FROM fav WHERE id=?", arrayOf(id.toString())).use { it.moveToFirst() }
+
+    /** Stored name of a favourite, which outlives the business's FSA record. */
+    fun favouriteName(id: Long): String? =
+        userDb.readableDatabase.rawQuery("SELECT name FROM fav WHERE id=?", arrayOf(id.toString())).use { if (it.moveToFirst()) it.getString(0) else null }
 
     fun setFavourite(id: Long, name: String, on: Boolean) {
-        val w = db.writableDatabase
+        val w = userDb.writableDatabase
         if (on) w.execSQL("INSERT OR REPLACE INTO fav(id, name, added) VALUES(?,?,?)", arrayOf<Any>(id, name, System.currentTimeMillis()))
         else w.execSQL("DELETE FROM fav WHERE id=?", arrayOf(id))
         notifyChanged()
@@ -224,17 +269,25 @@ class Repository(private val db: Db, private val postcodeIndex: () -> PostcodeIn
     data class CachedOsm(val fetchedAt: Long, val json: String?)
 
     fun cachedOsm(id: Long): CachedOsm? =
-        db.readableDatabase.rawQuery("SELECT fetched, json FROM osm WHERE id=?", arrayOf(id.toString())).use {
+        userDb.readableDatabase.rawQuery("SELECT fetched, json FROM osm WHERE id=?", arrayOf(id.toString())).use {
             if (it.moveToFirst()) CachedOsm(it.getLong(0), it.getStringOrNull(1)) else null
         }
 
     fun cacheOsm(id: Long, json: String?) {
-        db.writableDatabase.execSQL("INSERT OR REPLACE INTO osm(id, fetched, json) VALUES(?,?,?)", arrayOf<Any?>(id, System.currentTimeMillis(), json))
+        userDb.writableDatabase.execSQL("INSERT OR REPLACE INTO osm(id, fetched, json) VALUES(?,?,?)", arrayOf<Any?>(id, System.currentTimeMillis(), json))
     }
 
-    /** OSM lookups made today, to stay within the public Overpass server's fair-use limits. */
-    fun osmLookupsSince(sinceMillis: Long): Int =
-        db.readableDatabase.rawQuery("SELECT count(*) FROM osm WHERE fetched >= ?", arrayOf(sinceMillis.toString())).use { if (it.moveToFirst()) it.getInt(0) else 0 }
+    /** Records one Overpass request (successful or not) for the daily fair-use cap. */
+    fun recordOsmCall() {
+        val w = userDb.writableDatabase
+        val now = System.currentTimeMillis()
+        w.execSQL("INSERT INTO osm_calls(at) VALUES(?)", arrayOf(now))
+        w.execSQL("DELETE FROM osm_calls WHERE at < ?", arrayOf(now - 2 * 24 * 60 * 60 * 1000L))
+    }
+
+    /** Overpass requests made since [sinceMillis], counting failures, to stay within fair use. */
+    fun osmCallsSince(sinceMillis: Long): Int =
+        userDb.readableDatabase.rawQuery("SELECT count(*) FROM osm_calls WHERE at >= ?", arrayOf(sinceMillis.toString())).use { if (it.moveToFirst()) it.getInt(0) else 0 }
 
     // Helpers ------------------------------------------------------------------------------------
 
@@ -262,11 +315,10 @@ class Repository(private val db: Db, private val postcodeIndex: () -> PostcodeIn
         SortOrder.NAME -> list.sortedBy { it.est.name.lowercase() }
     }
 
-    private fun sortForSearch(list: List<Listing>, order: SortOrder) =
-        if (order == SortOrder.DISTANCE && list.all { it.distanceM == null }) list.sortedBy { it.est.name.lowercase() } else sort(list, order)
-
     companion object {
         private const val MIN_NEARBY = 60
+        private const val UNLOCATED = 5_000_000.0
+        private const val NOT_NAME = 10_000_000.0
         private const val MAX_RADIUS = 64_000.0
 
         private const val SELECT_EST =

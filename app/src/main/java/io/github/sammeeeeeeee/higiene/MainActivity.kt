@@ -33,6 +33,12 @@ class MainActivity : ComponentActivity() {
         pending = establishmentFrom(intent)
     }
 
-    private fun establishmentFrom(intent: Intent?): Long? =
-        intent?.getLongExtra(Notifications.EXTRA_ESTABLISHMENT, -1L)?.takeIf { it > 0 }
+    /** The business a rating-change notification points at, once (not again when relaunched from Recents). */
+    private fun establishmentFrom(intent: Intent?): Long? {
+        if (intent == null || intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0) return null
+        val id = intent.getLongExtra(Notifications.EXTRA_ESTABLISHMENT, -1L).takeIf { it > 0 } ?: return null
+        intent.removeExtra(Notifications.EXTRA_ESTABLISHMENT)
+        setIntent(intent)
+        return id
+    }
 }

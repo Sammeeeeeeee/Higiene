@@ -6,29 +6,38 @@ import android.database.sqlite.SQLiteStatement
 import android.util.Base64
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.io.File
+import java.io.FileOutputStream
 import java.io.FilterInputStream
 import java.io.IOException
 import java.io.InputStream
-import java.security.DigestInputStream
 import java.security.MessageDigest
 import java.time.LocalDate
+import java.util.Properties
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
- * Downloads the FSA's daily all-UK CSV and merges it into the local database in one transaction.
+ * Downloads the FSA's daily all-UK CSV to a local file (resumable, MD5-checked), then merges it into
+ * the database in one transaction.
  *
  * Each row's hash is compared with the stored hash so unchanged rows (normally >99%) are skipped.
- * The transaction commits only if the byte count and the server's Content-MD5 match, so a cut-off
- * download can never delete or corrupt data.
+ * Nothing touches the database until the whole file is on disk and matches the server's length and
+ * Content-MD5, so a cut-off download can never delete or corrupt data, and the write transaction
+ * lasts only as long as the local merge.
  */
 class FsaImporter(
     private val db: Db,
     private val http: OkHttpClient,
     private val postcodeIndex: () -> PostcodeIndex?,
+    /** Where the CSV is downloaded to (app cache). */
+    private val workDir: File,
+    /** Ids of the user's favourites, to report their rating changes. */
+    private val favouriteIds: () -> Set<Long> = { emptySet() },
     /** A real UK file has ~600k rows; anything far smaller is treated as a broken download. */
     private val minRows: Int = 100_000,
+    private val url: String = CSV_URL,
 ) {
-    enum class Stage { CHECKING, DOWNLOADING, LOCATING }
+    enum class Stage { CHECKING, DOWNLOADING, IMPORTING, LOCATING }
 
     data class Progress(val stage: Stage, val done: Long, val total: Long)
 
@@ -43,44 +52,137 @@ class FsaImporter(
         ) : Outcome
     }
 
+    private val part get() = File(workDir, "fsa.csv.part")
+    private val partInfo get() = File(workDir, "fsa.csv.part.properties")
+
     fun refresh(force: Boolean, onProgress: (Progress) -> Unit, isStopped: () -> Boolean): Outcome {
         onProgress(Progress(Stage.CHECKING, 0, 0))
+        workDir.mkdirs()
         val previousRows = db.meta(Db.META_ROWS)?.toIntOrNull() ?: 0
-        val etag = db.meta(Db.META_ETAG)
+        val info = download(force, previousRows, onProgress, isStopped) ?: run {
+            db.setMeta(db.writableDatabase, Db.META_CHECKED_AT, System.currentTimeMillis().toString())
+            return Outcome.Unchanged
+        }
+        onProgress(Progress(Stage.IMPORTING, 0, info.length))
+        val meta = mapOf(Db.META_ETAG to info.etag, Db.META_LAST_MODIFIED to info.lastModified)
+        val outcome = CountingInputStream(part.inputStream().buffered(1 shl 16)).use { input ->
+            merge(CsvReader(input), previousRows, isStopped, meta) { rows ->
+                if (rows < 0) onProgress(Progress(Stage.LOCATING, 0, 0))
+                else onProgress(Progress(Stage.IMPORTING, input.count, info.length))
+            }
+        }
+        part.delete()
+        partInfo.delete()
+        return outcome
+    }
+
+    private data class FileInfo(val etag: String?, val lastModified: String?, val md5: String?, val length: Long)
+
+    private fun loadInfo(): FileInfo? = runCatching {
+        val p = Properties().apply { partInfo.inputStream().use { load(it) } }
+        FileInfo(p.getProperty("etag"), p.getProperty("lastModified"), p.getProperty("md5"), p.getProperty("length").toLong())
+    }.getOrNull()
+
+    private fun saveInfo(i: FileInfo) {
+        val p = Properties()
+        i.etag?.let { p.setProperty("etag", it) }
+        i.lastModified?.let { p.setProperty("lastModified", it) }
+        i.md5?.let { p.setProperty("md5", it) }
+        p.setProperty("length", i.length.toString())
+        partInfo.outputStream().use { p.store(it, null) }
+    }
+
+    /**
+     * Brings [part] up to date with the server. Returns null when the server says the data we
+     * already imported is current (304). Resumes a partial file with Range/If-Range.
+     */
+    private fun download(force: Boolean, previousRows: Int, onProgress: (Progress) -> Unit, isStopped: () -> Boolean): FileInfo? {
+        var info = loadInfo()
+        if (info == null || !part.exists()) {
+            part.delete()
+            info = null
+        }
+        val have = if (info != null) part.length() else 0L
+        if (info != null && have == info.length && info.length > 0) {
+            // Finished earlier but the merge didn't complete (stopped or killed): reuse it.
+            verifyMd5(info)
+            return info
+        }
+        val importedEtag = db.meta(Db.META_ETAG)
         val request = Request.Builder()
-            .url(CSV_URL)
+            .url(url)
             // Count raw bytes ourselves; no transparent gzip.
             .header("Accept-Encoding", "identity")
-            .apply { if (!force && previousRows > 0 && etag != null) header("If-None-Match", etag) }
+            .apply {
+                if (info != null && have > 0 && info.etag != null) {
+                    header("Range", "bytes=$have-")
+                    header("If-Range", info.etag)
+                } else if (!force && previousRows > 0 && importedEtag != null) {
+                    header("If-None-Match", importedEtag)
+                }
+            }
             .build()
 
         http.newCall(request).execute().use { response ->
-            if (response.code == 304) {
-                db.writableDatabase.let { w -> db.setMeta(w, Db.META_CHECKED_AT, System.currentTimeMillis().toString()) }
-                return Outcome.Unchanged
+            if (response.code == 304) return null
+            val append = response.code == 206
+            if (!append && response.code != 200) throw IOException("FSA download failed: HTTP ${response.code}")
+            if (append) {
+                val range = response.header("Content-Range").orEmpty()
+                if (!range.startsWith("bytes $have-")) throw IOException("Unexpected resume range: $range")
+            } else {
+                val length = response.body.contentLength()
+                info = FileInfo(response.header("ETag"), response.header("Last-Modified"), response.header("Content-MD5")?.trim(), length)
+                part.delete()
+                saveInfo(info!!)
             }
-            if (!response.isSuccessful) throw IOException("FSA download failed: HTTP ${response.code}")
-            val body = response.body
-            val expectedLength = body.contentLength()
-            val expectedMd5 = response.header("Content-MD5")
-            val counting = CountingInputStream(body.byteStream())
-            val md5 = MessageDigest.getInstance("MD5")
-            val reader = CsvReader(DigestInputStream(counting, md5))
-            val meta = mapOf(Db.META_ETAG to response.header("ETag"), Db.META_LAST_MODIFIED to response.header("Last-Modified"))
-            return merge(reader, previousRows, isStopped, meta) { rows ->
-                onProgress(Progress(Stage.DOWNLOADING, counting.count, expectedLength))
-                if (rows < 0) {
-                    // End of file reached: verify before the transaction is allowed to commit.
-                    if (expectedLength >= 0 && counting.count != expectedLength) {
-                        throw IOException("Download incomplete: ${counting.count} of $expectedLength bytes")
+            val total = info!!.length
+            var done = if (append) have else 0L
+            val buffer = ByteArray(1 shl 16)
+            response.body.byteStream().use { input ->
+                FileOutputStream(part, append).use { out ->
+                    var lastReport = 0L
+                    while (true) {
+                        val n = input.read(buffer)
+                        if (n < 0) break
+                        out.write(buffer, 0, n)
+                        done += n
+                        if (done - lastReport > 512 * 1024) {
+                            lastReport = done
+                            onProgress(Progress(Stage.DOWNLOADING, done, total))
+                            // Keep what we have; the next run resumes from here.
+                            if (isStopped()) throw CancellationException("Refresh stopped")
+                        }
                     }
-                    if (expectedMd5 != null) {
-                        val actual = Base64.encodeToString(md5.digest(), Base64.NO_WRAP)
-                        if (actual != expectedMd5.trim()) throw IOException("Download corrupted (MD5 mismatch)")
-                    }
-                    onProgress(Progress(Stage.LOCATING, 0, 0))
                 }
             }
+            onProgress(Progress(Stage.DOWNLOADING, done, total))
+            if (total >= 0 && part.length() != total) throw IOException("Download incomplete: ${part.length()} of $total bytes")
+            if (total < 0) {
+                info = info!!.copy(length = part.length())
+                saveInfo(info!!)
+            }
+            verifyMd5(info!!)
+            return info
+        }
+    }
+
+    private fun verifyMd5(info: FileInfo) {
+        val expected = info.md5 ?: return
+        val md5 = MessageDigest.getInstance("MD5")
+        part.inputStream().use { input ->
+            val buffer = ByteArray(1 shl 16)
+            while (true) {
+                val n = input.read(buffer)
+                if (n < 0) break
+                md5.update(buffer, 0, n)
+            }
+        }
+        val actual = Base64.encodeToString(md5.digest(), Base64.NO_WRAP)
+        if (actual != expected) {
+            part.delete()
+            partInfo.delete()
+            throw IOException("Download corrupted (MD5 mismatch)")
         }
     }
 
@@ -123,10 +225,17 @@ class FsaImporter(
         val cReply = c("RightToReply")
 
         val w = db.writableDatabase
+        val favourites = favouriteIds()
+        // Take the snapshot inside the transaction so it matches what we modify.
+        w.beginTransactionNonExclusive()
         // Existing ids and hashes, sorted by id for binary search.
-        val (ids, hashes) = loadHashes(w)
+        val (ids, hashes) = try {
+            loadHashes(w)
+        } catch (e: Throwable) {
+            w.endTransaction()
+            throw e
+        }
         val seen = BooleanArray(ids.size)
-        val favourites = loadFavourites(w)
         val firstImport = ids.isEmpty()
         val touched = LongHashSet()
         val types = HashMap<Int, String>()
@@ -137,7 +246,6 @@ class FsaImporter(
         var changed = 0
         var removed = 0
 
-        w.beginTransactionNonExclusive()
         try {
             val upsert = w.compileStatement(
                 "INSERT OR REPLACE INTO est(id,name,address,pc,site,type,la,rating,rnum,rdate,hyg,str,cim,lat,lon,loc,pending,reply,welsh,fhis,h) " +
@@ -290,9 +398,6 @@ class FsaImporter(
         }
     }
 
-    private fun loadFavourites(w: SQLiteDatabase): Set<Long> =
-        w.rawQuery("SELECT id FROM fav", null).use { cur -> buildSet { while (cur.moveToNext()) add(cur.getLong(0)) } }
-
     companion object {
         const val CSV_URL = "https://safhrsprodstorage.blob.core.windows.net/opendatafileblobstorage/FHRS_All_en-GB.csv"
         private val REQUIRED = listOf("FHRSID", "BusinessName", "BusinessTypeID", "LocalAuthorityCode", "RatingValue")
@@ -321,15 +426,17 @@ class FsaImporter(
          */
         fun locate(w: SQLiteDatabase, index: PostcodeIndex?) {
             if (index != null) {
+                // Read everything first: updating rows the open cursor selects could make it skip rows.
+                val todo = w.rawQuery("SELECT id, pc FROM est WHERE lat IS NULL AND pc IS NOT NULL", null).use { cur ->
+                    buildList { while (cur.moveToNext()) add(cur.getLong(0) to cur.getString(1)) }
+                }
                 val update = w.compileStatement("UPDATE est SET lat=?, lon=?, loc=${LocSource.POSTCODE_OS.code} WHERE id=?")
-                w.rawQuery("SELECT id, pc FROM est WHERE lat IS NULL AND pc IS NOT NULL", null).use { cur ->
-                    while (cur.moveToNext()) {
-                        val ll = index.lookup(cur.getString(1)) ?: continue
-                        update.bindLong(1, e6(ll[0]))
-                        update.bindLong(2, e6(ll[1]))
-                        update.bindLong(3, cur.getLong(0))
-                        update.executeUpdateDelete()
-                    }
+                for ((id, pc) in todo) {
+                    val ll = index.lookup(pc) ?: continue
+                    update.bindLong(1, e6(ll[0]))
+                    update.bindLong(2, e6(ll[1]))
+                    update.bindLong(3, id)
+                    update.executeUpdateDelete()
                 }
             }
             w.execSQL(

@@ -1,5 +1,6 @@
 package io.github.sammeeeeeeee.higiene.work
 
+import android.app.ActivityManager
 import android.content.Context
 import android.content.pm.ServiceInfo
 import android.os.Build
@@ -8,9 +9,12 @@ import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import io.github.sammeeeeeeee.higiene.HigieneApp
+import io.github.sammeeeeeeee.higiene.R
 import io.github.sammeeeeeeee.higiene.data.Db
 import io.github.sammeeeeeeee.higiene.data.FsaImporter
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -21,13 +25,20 @@ import kotlin.coroutines.cancellation.CancellationException
 class RefreshWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        // One refresh at a time: the user's and the periodic one must never both import.
+        lock.withLock { refresh() }
+    }
+
+    private suspend fun refresh(): Result {
         val graph = (applicationContext as HigieneApp).graph
-        val userInitiated = inputData.getBoolean(KEY_USER, false)
+        // A foreground service can only start while the app is visible (Android 12+); a failed
+        // attempt also leaves WorkManager ignoring stop requests, so don't try from the background.
+        val userInitiated = inputData.getBoolean(KEY_USER, false) && appVisible()
         val force = inputData.getBoolean(KEY_FORCE, false)
         if (userInitiated) runCatching { setForeground(foregroundInfo(Notifications.progress(applicationContext, null, 0, 0))) }
 
         var lastPush = 0L
-        try {
+        return try {
             graph.authorities.ensureLoaded()
             runCatching { graph.authorities.refreshIfStale() }
 
@@ -46,6 +57,10 @@ class RefreshWorker(context: Context, params: WorkerParameters) : CoroutineWorke
                 isStopped = { isStopped },
             )
             graph.repo.notifyChanged()
+            // Alert now: the import is committed, and a later stage could be stopped.
+            if (outcome is FsaImporter.Outcome.Updated && outcome.favouriteChanges.isNotEmpty()) {
+                Notifications.ratingChanges(applicationContext, outcome.favouriteChanges)
+            }
 
             // Postcode centres: first run, then monthly (OS publishes quarterly).
             val lastPc = graph.db.meta(Db.META_CODEPOINT_AT)?.toLongOrNull() ?: 0
@@ -60,18 +75,22 @@ class RefreshWorker(context: Context, params: WorkerParameters) : CoroutineWorke
                 graph.repo.notifyChanged()
             }
 
-            if (outcome is FsaImporter.Outcome.Updated && outcome.favouriteChanges.isNotEmpty()) {
-                Notifications.ratingChanges(applicationContext, outcome.favouriteChanges)
-            }
             graph.db.setMeta(graph.db.writableDatabase, META_LAST_ERROR, null)
             Result.success()
         } catch (e: CancellationException) {
+            if (isStopped) graph.db.setMeta(graph.db.writableDatabase, META_LAST_ERROR, applicationContext.getString(R.string.error_stopped))
             throw e
         } catch (e: Exception) {
             graph.db.setMeta(graph.db.writableDatabase, META_LAST_ERROR, e.message ?: e.javaClass.simpleName)
             graph.repo.notifyChanged()
             if (runAttemptCount < 3) Result.retry() else Result.failure(workDataOf(KEY_ERROR to (e.message ?: "Refresh failed")))
         }
+    }
+
+    private fun appVisible(): Boolean {
+        val info = ActivityManager.RunningAppProcessInfo()
+        ActivityManager.getMyMemoryState(info)
+        return info.importance <= ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE
     }
 
     override suspend fun getForegroundInfo(): ForegroundInfo = foregroundInfo(Notifications.progress(applicationContext, null, 0, 0))
@@ -84,6 +103,7 @@ class RefreshWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         }
 
     companion object {
+        private val lock = Mutex()
         const val KEY_USER = "user"
         const val KEY_FORCE = "force"
         const val KEY_STAGE = "stage"

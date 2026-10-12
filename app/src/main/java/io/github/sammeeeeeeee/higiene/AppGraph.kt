@@ -10,6 +10,7 @@ import io.github.sammeeeeeeee.higiene.data.OsmClient
 import io.github.sammeeeeeeee.higiene.data.PostcodeIndex
 import io.github.sammeeeeeeee.higiene.data.Repository
 import io.github.sammeeeeeeee.higiene.data.Settings
+import io.github.sammeeeeeeee.higiene.data.UserDb
 import okhttp3.OkHttpClient
 import java.io.File
 import java.util.concurrent.TimeUnit
@@ -27,6 +28,7 @@ class AppGraph(context: Context) {
         .build()
 
     val db = Db(app)
+    val userDb = UserDb(app)
     private val postcodeFile = File(app.filesDir, "postcodes.bin")
 
     @Volatile
@@ -50,8 +52,8 @@ class AppGraph(context: Context) {
     }
 
     val settings = Settings(app)
-    val repo = Repository(db, ::postcodeIndex)
-    val fsa = FsaImporter(db, http, ::postcodeIndex)
+    val repo = Repository(db, userDb, ::postcodeIndex)
+    val fsa = FsaImporter(db, http, ::postcodeIndex, File(app.cacheDir, "fsa"), favouriteIds = userDb::favouriteIds)
     val codePoint = CodePointImporter(db, http, postcodeFile)
     val authorities = Authorities(app, db, http)
     val osm = OsmClient(http, repo)

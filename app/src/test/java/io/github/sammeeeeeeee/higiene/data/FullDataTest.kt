@@ -24,11 +24,13 @@ class FullDataTest {
         assumeTrue(csv != null && csv.exists() && zip != null && zip.exists())
         val context: Context = ApplicationProvider.getApplicationContext()
         context.deleteDatabase(Db.NAME)
+        context.deleteDatabase(UserDb.NAME)
         val db = Db(context)
+        val userDb = UserDb(context)
         val indexFile = File(context.filesDir, "postcodes.bin")
         var index: PostcodeIndex? = null
-        val repo = Repository(db) { index }
-        val importer = FsaImporter(db, okhttp3.OkHttpClient(), { index })
+        val repo = Repository(db, userDb) { index }
+        val importer = FsaImporter(db, okhttp3.OkHttpClient(), { index }, context.cacheDir, favouriteIds = userDb::favouriteIds)
 
         fun count(sql: String) = db.readableDatabase.rawQuery(sql, null).use { it.moveToFirst(); it.getLong(0) }
         fun t(label: String, block: () -> Unit) {
@@ -53,7 +55,14 @@ class FullDataTest {
         val rural = Centre(57.0, -4.5, "Highlands", fromGps = true)
         t("nearby highlands") { val n = repo.nearby(rural, Filters()); println("rural=${n.listings.size} radius=${n.radiusM}") }
         t("search greggs") { println("greggs=${repo.search("greggs", soho, Filters()).size}") }
-        t("search pizza") { println("pizza=${repo.search("pizza", soho, Filters()).size}") }
+        t("search pizza") {
+            val r = repo.search("pizza", soho, Filters())
+            println("pizza=${r.size} nearest=${r.first().distanceM?.toInt()} m, 20th=${r.getOrNull(19)?.distanceM?.toInt()} m")
+            // The nearest results must really be near (the old capped search returned matches 18 km away).
+            assertTrue(r.first().distanceM!! < 500)
+        }
+        t("search th (broad)") { println("th=${repo.search("th", soho, Filters()).size}") }
+        t("search cafe 5 only") { println("cafe5=${repo.search("cafe", soho, Filters(minRating = 5)).size}") }
         t("postcode") { println("SW1A 1AA -> ${repo.resolvePlace("SW1A 1AA")}; BT1 1AA -> ${repo.resolvePlace("BT1 1AA")}; BT1 -> ${repo.resolvePlace("BT1")}; E1 6 -> ${repo.resolvePlace("E1 6")}; E16 -> ${repo.resolvePlace("E16")}") }
         // Whitechapel (E1 6) and Canning Town (E16) are ~6 km apart.
         val e1 = repo.resolvePlace("E1 6")!!

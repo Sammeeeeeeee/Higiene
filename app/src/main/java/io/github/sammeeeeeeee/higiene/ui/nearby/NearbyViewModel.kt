@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -50,6 +51,8 @@ data class NearbyState(
     val loaded: Boolean = false,
     val unlocated: Repository.Unlocated? = null,
     val types: List<BusinessType> = emptyList(),
+    /** When the ratings data was last confirmed current (the FSA asks apps to show this). */
+    val dataCheckedAt: Long? = null,
 )
 
 enum class LocationProblem { NO_PERMISSION, DISABLED, NO_FIX }
@@ -61,7 +64,9 @@ class NearbyViewModel(app: Application) : AndroidViewModel(app) {
     val state: StateFlow<NearbyState> = _state.asStateFlow()
 
     val settings: StateFlow<UserSettings> = graph.settings.flow.stateIn(viewModelScope, SharingStarted.Eagerly, UserSettings())
-    val refresh: StateFlow<RefreshUi> = refreshUiFlow(app).stateIn(viewModelScope, SharingStarted.Eagerly, RefreshUi())
+    val refresh: StateFlow<RefreshUi> = refreshUiFlow(app) { graph.db.meta(io.github.sammeeeeeeee.higiene.work.RefreshWorker.META_LAST_ERROR) }
+        .flowOn(Dispatchers.IO)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, RefreshUi())
 
     private var locateJob: Job? = null
 
@@ -112,8 +117,12 @@ class NearbyViewModel(app: Application) : AndroidViewModel(app) {
                 else -> Loaded(emptyList(), null, types, place, full)
             }
         }
+        val checked = withContext(Dispatchers.IO) { graph.repo.dataInfo().checkedAt }
         _state.update {
-            it.copy(rows = result.rows, unlocated = result.unlocated, types = result.types, place = result.place, fullPostcode = result.fullPostcode, loading = false, loaded = true)
+            it.copy(
+                rows = result.rows, unlocated = result.unlocated, types = result.types, place = result.place,
+                fullPostcode = result.fullPostcode, loading = false, loaded = true, dataCheckedAt = checked,
+            )
         }
     }
 
@@ -154,12 +163,15 @@ class NearbyViewModel(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
             val c = Centre(loc.latitude, loc.longitude, "", fromGps = true, approximate = loc.accuracy > 500)
-            _state.update { it.copy(centre = c, locating = false, query = "", place = null) }
+            // An automatic fix at start-up must not wipe what the user has started typing.
+            _state.update { if (quiet) it.copy(centre = c, locating = false) else it.copy(centre = c, locating = false, query = "", place = null) }
             graph.settings.setLastCentre(c)
         }
     }
 
     fun dismissLocationProblem() = _state.update { it.copy(locationProblem = null) }
+
+    fun permissionDenied() = _state.update { it.copy(locating = false, locationProblem = LocationProblem.NO_PERMISSION) }
 
     fun startDownload(anyNetwork: Boolean) {
         viewModelScope.launch {

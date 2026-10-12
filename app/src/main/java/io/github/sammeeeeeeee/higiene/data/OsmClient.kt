@@ -10,10 +10,10 @@ import java.io.IOException
 data class OsmDetails(val type: String, val osmId: Long, val tags: Map<String, String>) {
     val openingHours get() = tags["opening_hours"]
     val cuisine get() = tags["cuisine"]?.split(';')?.map { it.trim().replace('_', ' ') }?.filter { it.isNotEmpty() }.orEmpty()
-    val website get() = tags["website"] ?: tags["contact:website"] ?: tags["url"]
+    val website get() = (tags["website"] ?: tags["contact:website"] ?: tags["url"])?.let { webUrl(it) }
     val phone get() = tags["phone"] ?: tags["contact:phone"]
     val email get() = tags["email"] ?: tags["contact:email"]
-    val menu get() = tags["website:menu"]
+    val menu get() = tags["website:menu"]?.let { webUrl(it) }
     val brandQid get() = tags["brand:wikidata"]
     val wheelchair get() = tags["wheelchair"]
     val takeaway get() = tags["takeaway"]
@@ -24,13 +24,29 @@ data class OsmDetails(val type: String, val osmId: Long, val tags: Map<String, S
             .filter { tags["diet:$it"] == "yes" || tags["diet:$it"] == "only" }
             .map { it.replace('_', '-') }
     val osmUrl get() = "https://www.openstreetmap.org/$type/$osmId"
+
+    private companion object {
+        /** Anyone can edit OSM: accept only web links, adding https:// when the scheme is missing. */
+        fun webUrl(raw: String): String? {
+            val v = raw.trim().substringBefore(';').trim()
+            val lower = v.lowercase()
+            return when {
+                lower.startsWith("https://") || lower.startsWith("http://") -> v
+                lower.contains("://") || lower.startsWith("javascript:") || lower.startsWith("file:") || v.isEmpty() -> null
+                else -> "https://$v"
+            }
+        }
+    }
 }
 
 sealed interface OsmResult {
     data class Found(val details: OsmDetails) : OsmResult
     data object NotMapped : OsmResult
-    /** Daily fair-use cap reached or the server asked us to back off. */
-    data object Throttled : OsmResult
+    /** Daily fair-use cap reached. */
+    data object DailyLimit : OsmResult
+
+    /** The server is busy or asked us to back off; try again in a minute. */
+    data object Busy : OsmResult
     data class Failed(val message: String) : OsmResult
 }
 
@@ -50,19 +66,31 @@ class OsmClient(private val http: OkHttpClient, private val repo: Repository) {
             val ttl = if (cached.json != null) FOUND_TTL else MISSING_TTL
             if (now - cached.fetchedAt < ttl) return cached.json?.let { OsmResult.Found(parse(it)) } ?: OsmResult.NotMapped
         }
-        if (now < backoffUntil || repo.osmLookupsSince(now - DAY) >= DAILY_CAP) {
-            return repo.cachedOsm(fhrsId)?.json?.let { OsmResult.Found(parse(it)) } ?: OsmResult.Throttled
-        }
+        val stale = repo.cachedOsm(fhrsId)?.json?.let { OsmResult.Found(parse(it)) }
+        if (now < backoffUntil) return stale ?: OsmResult.Busy
+        if (repo.osmCallsSince(now - DAY) >= DAILY_CAP) return stale ?: OsmResult.DailyLimit
+        // Every attempt counts towards the cap, failed or not.
+        repo.recordOsmCall()
         return try {
             val query = "[out:json][timeout:20];nwr[\"fhrs:id\"=\"$fhrsId\"];out tags;"
             val request = Request.Builder().url(ENDPOINT).post(FormBody.Builder().add("data", query).build()).build()
             http.newCall(request).execute().use { r ->
                 if (r.code == 429 || r.code == 504 || r.code == 503) {
                     backoffUntil = System.currentTimeMillis() + BACKOFF
-                    return repo.cachedOsm(fhrsId)?.json?.let { OsmResult.Found(parse(it)) } ?: OsmResult.Throttled
+                    return stale ?: OsmResult.Busy
                 }
-                if (!r.isSuccessful) throw IOException("HTTP ${r.code}")
-                val elements = JSONObject(r.body.string()).optJSONArray("elements")
+                if (!r.isSuccessful) {
+                    backoffUntil = System.currentTimeMillis() + BACKOFF
+                    throw IOException("HTTP ${r.code}")
+                }
+                val reply = JSONObject(r.body.string())
+                // Overpass reports timeouts and overload as HTTP 200 with a "remark"; don't cache those.
+                val remark = reply.optString("remark")
+                if (remark.contains("error", ignoreCase = true) || remark.contains("timed out", ignoreCase = true)) {
+                    backoffUntil = System.currentTimeMillis() + BACKOFF
+                    return stale ?: OsmResult.Busy
+                }
+                val elements = reply.optJSONArray("elements")
                 // Prefer the element with the most tags if a business is mapped twice.
                 var best: JSONObject? = null
                 if (elements != null) {
@@ -79,7 +107,8 @@ class OsmClient(private val http: OkHttpClient, private val repo: Repository) {
                 stored?.let { OsmResult.Found(parse(it)) } ?: OsmResult.NotMapped
             }
         } catch (e: IOException) {
-            OsmResult.Failed(e.message ?: "Network error")
+            backoffUntil = System.currentTimeMillis() + BACKOFF
+            stale ?: OsmResult.Failed(e.message ?: "Network error")
         } catch (e: org.json.JSONException) {
             OsmResult.Failed("Unexpected reply from OpenStreetMap")
         }

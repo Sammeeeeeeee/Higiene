@@ -114,6 +114,7 @@ import io.github.sammeeeeeeee.higiene.ui.components.SkeletonTiles
 import io.github.sammeeeeeeee.higiene.ui.components.TextLink
 import io.github.sammeeeeeeee.higiene.ui.components.tactileClick
 import io.github.sammeeeeeeee.higiene.ui.theme.Fsa
+import io.github.sammeeeeeeee.higiene.ui.pretty
 import io.github.sammeeeeeeee.higiene.ui.typeIcon
 import io.github.sammeeeeeeee.higiene.ui.typeLabel
 import io.github.sammeeeeeeee.higiene.ui.theme.LocalDisplay
@@ -135,7 +136,7 @@ fun NearbyScreen(
     val context = LocalContext.current
 
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
-        if (granted.values.any { it }) vm.useMyLocation() else vm.dismissLocationProblem()
+        if (granted.values.any { it }) vm.useMyLocation() else vm.permissionDenied()
     }
     val locate = {
         if (LocationHelper.hasPermission(context)) vm.useMyLocation()
@@ -184,7 +185,12 @@ fun NearbyScreen(
                         onOpenUnlocated = onOpenUnlocated,
                         onPlace = vm::setCentre,
                         onLocate = locate,
-                        onLocationSettings = { context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)) },
+                        onLocationSettings = { runCatching { context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)) } },
+                        onAppSettings = {
+                            runCatching {
+                                context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", context.packageName, null)))
+                            }
+                        },
                         onDismissProblem = vm::dismissLocationProblem,
                     )
                 }
@@ -255,6 +261,7 @@ private fun RefreshStrip(refresh: RefreshUi) {
 @Composable
 private fun stageLabel(refresh: RefreshUi): String = when (refresh.stage) {
     "DOWNLOADING" -> if (refresh.total > 0) stringResource(R.string.progress_downloading_mb, refresh.done / 1_000_000, refresh.total / 1_000_000) else stringResource(R.string.progress_title)
+    "IMPORTING" -> stringResource(R.string.progress_importing)
     "LOCATING" -> stringResource(R.string.progress_locating)
     RefreshWorker.STAGE_POSTCODES -> stringResource(R.string.progress_postcodes)
     else -> stringResource(R.string.progress_checking)
@@ -323,12 +330,17 @@ private fun Results(
     onPlace: (Centre) -> Unit,
     onLocate: () -> Unit,
     onLocationSettings: () -> Unit,
+    onAppSettings: () -> Unit,
     onDismissProblem: () -> Unit,
 ) {
     val listState = rememberLazyListState()
-    // New results start at the top (otherwise the list keeps the footer's position as rows arrive).
-    LaunchedEffect(state.rows.firstOrNull()?.listing?.est?.id, state.centre, state.filters, state.query) {
-        listState.scrollToItem(0)
+    // New results start at the top (otherwise the list keeps the footer's position as rows arrive),
+    // but coming back to the same results keeps the user's place.
+    val resultsKey = listOf(state.rows.firstOrNull()?.listing?.est?.id, state.centre, state.filters, state.query).hashCode()
+    var shownKey by rememberSaveable { mutableStateOf<Int?>(null) }
+    LaunchedEffect(resultsKey) {
+        if (shownKey != null && shownKey != resultsKey) listState.scrollToItem(0)
+        shownKey = resultsKey
     }
     if (state.loading && state.rows.isEmpty() && state.place == null) {
         SkeletonTiles()
@@ -354,8 +366,11 @@ private fun Results(
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        if (problem == LocationProblem.DISABLED) TextLink(stringResource(R.string.open_location_settings), onLocationSettings)
-                        else TextLink(stringResource(R.string.try_again), onLocate)
+                        when (problem) {
+                            LocationProblem.DISABLED -> TextLink(stringResource(R.string.open_location_settings), onLocationSettings)
+                            LocationProblem.NO_PERMISSION -> TextLink(stringResource(R.string.open_app_settings), onAppSettings)
+                            LocationProblem.NO_FIX -> TextLink(stringResource(R.string.try_again), onLocate)
+                        }
                         TextLink(stringResource(R.string.dismiss), onDismissProblem, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
@@ -412,7 +427,10 @@ private fun Results(
         }
         item(key = "footer") {
             Text(
-                stringResource(R.string.list_footer),
+                stringResource(
+                    R.string.list_footer,
+                    state.dataCheckedAt?.let { java.time.Instant.ofEpochMilli(it).atZone(java.time.ZoneId.systemDefault()).toLocalDate().pretty() } ?: "—",
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 12.dp),
@@ -581,13 +599,18 @@ private fun Onboarding(refresh: RefreshUi, wifiOnly: Boolean, onStart: (anyNetwo
                     refresh.running -> {
                         val f = refresh.fraction
                         Text(
-                            if (f != null && refresh.stage == "DOWNLOADING") "${(f * 100).toInt()}%" else "…",
+                            if (f != null && (refresh.stage == "DOWNLOADING" || refresh.stage == "IMPORTING")) "${(f * 100).toInt()}%" else "…",
                             style = LocalDisplay.current.hero,
                             color = hero.headline,
                         )
                         Text(stageLabel(refresh), style = MaterialTheme.typography.titleMedium, color = hero.body)
-                        PillProgress(if (refresh.stage == "DOWNLOADING") f else null)
+                        PillProgress(if (refresh.stage == "DOWNLOADING" || refresh.stage == "IMPORTING") f else null)
                         Text(stringResource(R.string.onboarding_keep_open), style = MaterialTheme.typography.bodySmall, color = hero.body.copy(alpha = 0.8f))
+                    }
+                    refresh.retrying -> {
+                        refresh.failed?.let { Text(stringResource(R.string.download_failed, it), color = Color(0xFFFFB4AB), style = MaterialTheme.typography.bodyMedium) }
+                        Text(stringResource(R.string.retrying), style = LocalDisplay.current.section, color = hero.headline)
+                        PillProgress(null)
                     }
                     refresh.waiting -> {
                         Text(

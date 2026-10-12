@@ -142,6 +142,9 @@ fun DetailScreen(onBack: () -> Unit, onOpen: (Long) -> Unit, onOpenAddress: (Str
                 if (e != null) {
                     HeroIconButton(Icons.Rounded.Share, stringResource(R.string.share), { share(context, e) }, hero.body)
                     Spacer(Modifier.width(10.dp))
+                }
+                // Also shown for a favourite that has left the FSA data, so it can be removed.
+                if (e != null || state.favourite) {
                     val pop = rememberPop(state.favourite)
                     HeroIconButton(
                         if (state.favourite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
@@ -326,7 +329,11 @@ private fun Body(
                         null -> if (state.osmLoading) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp, color = Fsa.Green)
                         is OsmResult.Found -> OsmContent(osm.details)
                         OsmResult.NotMapped -> Text(stringResource(R.string.osm_not_mapped), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        OsmResult.Throttled -> Text(stringResource(R.string.osm_throttled, OsmClient.DAILY_CAP), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        OsmResult.DailyLimit -> Text(stringResource(R.string.osm_throttled, OsmClient.DAILY_CAP), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        OsmResult.Busy -> {
+                            Text(stringResource(R.string.osm_busy), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            TextLink(stringResource(R.string.try_again), onClick = onLoadOsm)
+                        }
                         is OsmResult.Failed -> {
                             Text(stringResource(R.string.osm_failed), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             TextLink(stringResource(R.string.try_again), onClick = onLoadOsm)
@@ -495,7 +502,7 @@ private fun OsmContent(d: OsmDetails) {
         d.outdoorSeating?.let { add(stringResource(R.string.osm_outdoor, it)) }
     }
     facts.forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
-    d.website?.let { w -> ContactRow(Icons.Rounded.Public, w.removePrefix("https://").removePrefix("http://").removeSuffix("/")) { open(context, Uri.parse(if (w.startsWith("http")) w else "https://$w")) } }
+    d.website?.let { w -> ContactRow(Icons.Rounded.Public, w.removePrefix("https://").removePrefix("http://").removeSuffix("/")) { open(context, Uri.parse(w)) } }
     d.phone?.let { p -> ContactRow(Icons.Rounded.Phone, p) { open(context, Uri.parse("tel:" + p.replace(" ", "")), Intent.ACTION_DIAL) } }
     d.email?.let { m -> ContactRow(Icons.Rounded.Mail, m) { open(context, Uri.parse("mailto:$m")) } }
     d.menu?.let { m -> TextLink(stringResource(R.string.osm_menu), onClick = { open(context, Uri.parse(m)) }) }
@@ -514,12 +521,17 @@ private fun open(context: Context, uri: Uri, action: String = Intent.ACTION_VIEW
         context.startActivity(Intent(action, uri))
     } catch (_: ActivityNotFoundException) {
         Toast.makeText(context, R.string.no_app, Toast.LENGTH_SHORT).show()
+    } catch (_: RuntimeException) {
+        // e.g. FileUriExposedException or SecurityException from a link someone typed into OSM.
+        Toast.makeText(context, R.string.no_app, Toast.LENGTH_SHORT).show()
     }
 }
 
 private fun directions(context: Context, e: Establishment) {
     val uri = if (e.lat != null && e.lon != null && e.loc?.approximate != true) {
-        Uri.parse("geo:${e.lat},${e.lon}?q=${e.lat},${e.lon}(${Uri.encode(e.name)})")
+        // Plain decimals: Double.toString gives "5.0E-4" near the Greenwich meridian.
+        val ll = String.format(java.util.Locale.US, "%.6f,%.6f", e.lat, e.lon)
+        Uri.parse("geo:$ll?q=$ll(${Uri.encode(e.name)})")
     } else {
         Uri.parse("geo:0,0?q=" + Uri.encode(listOfNotNull(e.name, e.address, e.postcode).joinToString(", ")))
     }

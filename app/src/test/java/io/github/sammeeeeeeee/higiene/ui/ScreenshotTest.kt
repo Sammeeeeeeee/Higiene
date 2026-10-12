@@ -53,7 +53,7 @@ class ScreenshotTest {
 
     private fun importSample() {
         val csv = javaClass.classLoader!!.getResource("fhrs_sample.csv").readBytes()
-        FsaImporter(app.graph.db, app.graph.http, { null }, minRows = 10).merge(CsvReader(csv.inputStream()), 0, { false }) {}
+        FsaImporter(app.graph.db, app.graph.http, { null }, app.cacheDir, minRows = 10).merge(CsvReader(csv.inputStream()), 0, { false }) {}
         app.graph.authorities.ensureLoaded()
         runBlocking { app.graph.settings.setLastCentre(Centre(52.2003982, 0.1261394, "CB2 1DP", fromGps = false)) }
         app.graph.repo.notifyChanged()
@@ -85,6 +85,7 @@ class ScreenshotTest {
     @Test
     fun onboarding() {
         (app as Context).deleteDatabase(Db.NAME)
+        (app as Context).deleteDatabase(io.github.sammeeeeeeee.higiene.data.UserDb.NAME)
         shot("01-onboarding")
     }
 

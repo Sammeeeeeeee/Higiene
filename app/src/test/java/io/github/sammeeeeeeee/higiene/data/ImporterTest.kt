@@ -22,6 +22,7 @@ import java.io.IOException
 class ImporterTest {
     private lateinit var context: Context
     private lateinit var db: Db
+    private lateinit var userDb: UserDb
     private lateinit var repo: Repository
     private lateinit var importer: FsaImporter
 
@@ -31,13 +32,18 @@ class ImporterTest {
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
         context.deleteDatabase(Db.NAME)
+        context.deleteDatabase(UserDb.NAME)
         db = Db(context)
-        repo = Repository(db) { null }
-        importer = FsaImporter(db, okhttp3.OkHttpClient(), { null }, minRows = 10)
+        userDb = UserDb(context)
+        repo = Repository(db, userDb) { null }
+        importer = FsaImporter(db, okhttp3.OkHttpClient(), { null }, context.cacheDir, favouriteIds = userDb::favouriteIds, minRows = 10)
     }
 
     @After
-    fun tearDown() = db.close()
+    fun tearDown() {
+        db.close()
+        userDb.close()
+    }
 
     private fun merge(csv: String, checkpoint: (Int) -> Unit = {}): FsaImporter.Outcome.Updated {
         val previous = db.meta(Db.META_ROWS)?.toIntOrNull() ?: 0

@@ -31,8 +31,11 @@ object Scheduler {
             .build()
         val request = PeriodicWorkRequestBuilder<RefreshWorker>(days, TimeUnit.DAYS)
             .setConstraints(constraints)
+            // The first periodic run waits a full interval, so it never races the first download.
+            .setInitialDelay(days, TimeUnit.DAYS)
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.MINUTES)
             .build()
+        // UPDATE keeps the existing schedule (and its next run time) when only settings change.
         wm.enqueueUniquePeriodicWork(PERIODIC, ExistingPeriodicWorkPolicy.UPDATE, request)
     }
 

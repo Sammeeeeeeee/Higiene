@@ -48,6 +48,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NamedNavArgument
@@ -140,15 +141,19 @@ fun AppNav(openEstablishment: Long?, onOpenedEstablishment: () -> Unit) {
                     }
                     tab("favourites") { FavouritesScreen(onOpen = open) }
                     tab("settings") { SettingsScreen(onLicences = { nav.navigate("licences") }) }
-                    screen("licences") { LicencesScreen(onBack = { nav.popBackStack() }) }
+                    // Back only from the resumed screen, so a quick double tap can't pop the start page.
+                    fun back(entry: NavBackStackEntry): () -> Unit = {
+                        if (entry.lifecycle.currentState == Lifecycle.State.RESUMED) nav.popBackStack()
+                    }
+                    screen("licences") { LicencesScreen(onBack = back(it)) }
                     screen("detail/{id}", listOf(navArgument("id") { type = NavType.LongType })) {
-                        DetailScreen(onBack = { nav.popBackStack() }, onOpen = open, onOpenAddress = openAddress)
+                        DetailScreen(onBack = back(it), onOpen = open, onOpenAddress = openAddress)
                     }
                     screen("address/{pc}", listOf(navArgument("pc") { type = NavType.StringType })) {
-                        ListScreen(onBack = { nav.popBackStack() }, onOpen = open)
+                        ListScreen(onBack = back(it), onOpen = open)
                     }
                     screen("unlocated/{la}", listOf(navArgument("la") { type = NavType.IntType })) {
-                        ListScreen(onBack = { nav.popBackStack() }, onOpen = open)
+                        ListScreen(onBack = back(it), onOpen = open)
                     }
                 }
             }

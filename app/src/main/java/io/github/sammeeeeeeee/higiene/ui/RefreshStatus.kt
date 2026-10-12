@@ -18,12 +18,14 @@ data class RefreshUi(
     val done: Long = 0,
     val total: Long = 0,
     val failed: String? = null,
+    /** Waiting to retry after an error (shown with [failed]), not waiting for a network. */
+    val retrying: Boolean = false,
 ) {
     val active get() = running || waiting
     val fraction get() = if (total > 0) (done.toFloat() / total).coerceIn(0f, 1f) else null
 }
 
-fun refreshUiFlow(context: Context): Flow<RefreshUi> {
+fun refreshUiFlow(context: Context, lastError: () -> String? = { null }): Flow<RefreshUi> {
     val wm = WorkManager.getInstance(context)
     return combine(
         wm.getWorkInfosForUniqueWorkFlow(Scheduler.NOW),
@@ -34,11 +36,12 @@ fun refreshUiFlow(context: Context): Flow<RefreshUi> {
         when {
             n?.state == WorkInfo.State.RUNNING -> n.toUi()
             p?.state == WorkInfo.State.RUNNING -> p.toUi()
+            n?.state == WorkInfo.State.ENQUEUED && n.runAttemptCount > 0 -> RefreshUi(retrying = true, failed = lastError())
             n?.state == WorkInfo.State.ENQUEUED || n?.state == WorkInfo.State.BLOCKED -> RefreshUi(
                 waiting = true,
                 waitingForWifi = n.constraints.requiredNetworkType == NetworkType.UNMETERED,
             )
-            n?.state == WorkInfo.State.FAILED -> RefreshUi(failed = n.outputData.getString(RefreshWorker.KEY_ERROR) ?: "Refresh failed")
+            n?.state == WorkInfo.State.FAILED -> RefreshUi(failed = n.outputData.getString(RefreshWorker.KEY_ERROR) ?: lastError() ?: "Refresh failed")
             else -> RefreshUi()
         }
     }
