@@ -1,23 +1,24 @@
 package io.github.sammeeeeeeee.higiene.ui.favourites
 
 import android.app.Application
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.FavoriteBorder
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -28,11 +29,12 @@ import io.github.sammeeeeeeee.higiene.R
 import io.github.sammeeeeeeee.higiene.data.Brands
 import io.github.sammeeeeeeee.higiene.data.Repository
 import io.github.sammeeeeeeee.higiene.data.UserSettings
-import io.github.sammeeeeeeee.higiene.ui.components.Hairline
+import io.github.sammeeeeeeee.higiene.ui.LocalBottomSpace
+import io.github.sammeeeeeeee.higiene.ui.components.HeroHeader
+import io.github.sammeeeeeeee.higiene.ui.components.Tile
 import io.github.sammeeeeeeee.higiene.ui.components.InfoCard
 import io.github.sammeeeeeeee.higiene.ui.nearby.EstablishmentRow
 import io.github.sammeeeeeeee.higiene.ui.theme.LocalDisplay
-import io.github.sammeeeeeeee.higiene.ui.theme.LocalHero
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -57,34 +59,35 @@ class FavouritesViewModel(app: Application) : AndroidViewModel(app) {
 fun FavouritesScreen(onOpen: (Long) -> Unit, vm: FavouritesViewModel = viewModel()) {
     val items by vm.items.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
-    val hero = LocalHero.current
     Column(Modifier.fillMaxSize()) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .background(hero.background)
-                .windowInsetsPadding(WindowInsets.statusBars)
-                .padding(16.dp),
-        ) {
-            Text(stringResource(R.string.favourites_title), style = LocalDisplay.current.title, color = hero.headline)
-            Text(stringResource(R.string.favourites_subtitle), style = MaterialTheme.typography.bodyMedium, color = hero.body)
-        }
+        HeroHeader(stringResource(R.string.favourites_title), subtitle = stringResource(R.string.favourites_subtitle))
         val list = items
-        if (list != null && list.isEmpty()) {
-            InfoCard(Modifier.padding(16.dp)) { Text(stringResource(R.string.favourites_empty), style = MaterialTheme.typography.bodyMedium) }
-        }
-        LazyColumn(Modifier.fillMaxSize()) {
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = LocalBottomSpace.current + 16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            if (list != null && list.isEmpty()) {
+                item(key = "empty") {
+                    InfoCard {
+                        Icon(Icons.Rounded.FavoriteBorder, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
+                        Text(stringResource(R.string.favourites_empty_title), style = LocalDisplay.current.section)
+                        Text(stringResource(R.string.favourites_empty), style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
             items(list.orEmpty(), key = { it.fav.id }) { item ->
                 val l = item.fav.listing
                 if (l != null) {
-                    EstablishmentRow(l.est, l.distanceM, item.brand, settings.miles, onClick = { onOpen(item.fav.id) })
+                    EstablishmentRow(l.est, l.distanceM, item.brand, settings.miles, onClick = { onOpen(item.fav.id) }, modifier = Modifier.animateItem())
                 } else {
-                    Column(Modifier.fillMaxWidth().clickable { onOpen(item.fav.id) }.padding(16.dp)) {
-                        Text(item.fav.name, style = MaterialTheme.typography.titleMedium)
-                        Text(stringResource(R.string.favourite_removed), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Tile(onClick = { onOpen(item.fav.id) }, modifier = Modifier.animateItem()) {
+                        Column(Modifier.padding(18.dp)) {
+                            Text(item.fav.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text(stringResource(R.string.favourite_removed), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
-                Hairline(Modifier.padding(start = 72.dp))
             }
         }
     }

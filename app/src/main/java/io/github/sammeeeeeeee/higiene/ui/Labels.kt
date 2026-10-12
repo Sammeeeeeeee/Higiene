@@ -75,6 +75,28 @@ fun badgeAsset(e: Establishment, large: Boolean): String? {
     return "file:///android_asset/badges/fhrs/${if (large) "large" else "small"}/$name.svg"
 }
 
+/** Short, friendly name for an FSA business type (the FSA's own names are slash lists). */
+fun typeLabel(context: Context, typeId: Int, fsaName: String): String {
+    val res = when (typeId) {
+        1 -> R.string.type_restaurant
+        7844 -> R.string.type_takeaway
+        7843 -> R.string.type_pub
+        7841 -> R.string.type_other_catering
+        7846 -> R.string.type_mobile
+        4613 -> R.string.type_shop
+        7840 -> R.string.type_supermarket
+        7842 -> R.string.type_hotel
+        5 -> R.string.type_care
+        7845 -> R.string.type_school
+        7839 -> R.string.type_manufacturer
+        7 -> R.string.type_distributor
+        7838 -> R.string.type_farm
+        14 -> R.string.type_importer
+        else -> return fsaName
+    }
+    return context.getString(res)
+}
+
 fun typeIcon(typeId: Int): ImageVector = when (typeId) {
     1 -> Icons.Rounded.Restaurant
     7844 -> Icons.Rounded.Fastfood

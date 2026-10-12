@@ -153,10 +153,13 @@ data class HeroColors(val background: Color, val headline: Color, val body: Colo
 
 val LocalHero = staticCompositionLocalOf { HeroColors(Fsa.Ink, Fsa.Lime, Fsa.Paper, Fsa.Lime) }
 
+/** True in dark theme (follows the app theme, not just the system setting). */
+val LocalIsDark = staticCompositionLocalOf { false }
+
 @Composable
 fun HigieneTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
     val hero = if (darkTheme) HeroColors(Color(0xFF002424), Fsa.Lime, Color(0xFFE6EEEC), Fsa.Lime) else HeroColors(Fsa.Ink, Fsa.Lime, Fsa.Paper, Fsa.Lime)
-    androidx.compose.runtime.CompositionLocalProvider(LocalDisplay provides display, LocalHero provides hero) {
+    androidx.compose.runtime.CompositionLocalProvider(LocalDisplay provides display, LocalHero provides hero, LocalIsDark provides darkTheme) {
         MaterialTheme(colorScheme = if (darkTheme) dark else light, typography = typography, shapes = shapes, content = content)
     }
 }

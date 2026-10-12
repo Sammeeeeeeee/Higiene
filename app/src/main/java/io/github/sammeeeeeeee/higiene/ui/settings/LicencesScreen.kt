@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import io.github.sammeeeeeeee.higiene.HigieneApp
 import io.github.sammeeeeeeee.higiene.R
 import io.github.sammeeeeeeee.higiene.data.Db
+import io.github.sammeeeeeeee.higiene.ui.components.HeroHeader
 import io.github.sammeeeeeeee.higiene.ui.components.InfoCard
 import io.github.sammeeeeeeee.higiene.ui.components.SectionTitle
 import io.github.sammeeeeeeee.higiene.ui.theme.LocalDisplay
@@ -44,18 +45,7 @@ fun LicencesScreen(onBack: () -> Unit) {
     val nsi = remember { runCatching { context.assets.open("licences/nsi-bsd3.txt").bufferedReader().use { it.readText() } }.getOrDefault("") }
     val inter = remember { runCatching { context.assets.open("licences/inter-ofl.txt").bufferedReader().use { it.readText() } }.getOrDefault("") }
     Column(Modifier.fillMaxSize()) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .background(hero.background)
-                .windowInsetsPadding(WindowInsets.statusBars)
-                .padding(start = 4.dp, end = 16.dp, bottom = 16.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.back), tint = hero.body) }
-            }
-            Text(stringResource(R.string.licences_title), style = LocalDisplay.current.title, color = hero.headline, modifier = Modifier.padding(start = 12.dp))
-        }
+        HeroHeader(stringResource(R.string.licences_title), onBack = onBack)
         Column(
             Modifier
                 .verticalScroll(rememberScrollState())

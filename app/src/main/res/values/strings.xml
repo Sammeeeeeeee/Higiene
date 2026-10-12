@@ -64,7 +64,7 @@
     <string name="filter_hide_exempt">Hide exempt</string>
     <string name="filter_hide_awaiting">Hide awaiting inspection</string>
     <string name="filter_recent">Inspected in last year</string>
-    <string name="filter_restaurants">Restaurants and cafes</string>
+    <string name="filter_restaurants">Restaurants</string>
     <string name="filter_takeaways">Takeaways</string>
     <string name="sort_by">Sort by</string>
     <string name="sort_distance">Distance</string>
@@ -253,4 +253,24 @@
     <string name="lic_font_title">Inter typeface</string>
     <string name="lic_app_title">Higiene</string>
     <string name="lic_app_body">Copyright the Higiene contributors. Licensed under the GNU General Public License v3.0.</string>
+    <string name="where_title">WHERE ARE YOU?</string>
+    <string name="sort_recent_short">Recent</string>
+    <string name="favourites_empty_title">NOTHING SAVED YET</string>
+    <string name="whos_cooking_none_here">No other business is registered at this exact address.</string>
+    <string name="settings_rows_label">businesses rated, across the UK</string>
+    <string name="licences_short">Licences</string>
+    <string name="type_restaurant">Restaurant or café</string>
+    <string name="type_takeaway">Takeaway</string>
+    <string name="type_pub">Pub or bar</string>
+    <string name="type_other_catering">Other catering</string>
+    <string name="type_mobile">Mobile caterer</string>
+    <string name="type_shop">Shop</string>
+    <string name="type_supermarket">Supermarket</string>
+    <string name="type_hotel">Hotel or B&amp;B</string>
+    <string name="type_care">Hospital or care</string>
+    <string name="type_school">School or college</string>
+    <string name="type_manufacturer">Manufacturer</string>
+    <string name="type_distributor">Distributor</string>
+    <string name="type_farm">Farm</string>
+    <string name="type_importer">Importer or exporter</string>
 </resources>

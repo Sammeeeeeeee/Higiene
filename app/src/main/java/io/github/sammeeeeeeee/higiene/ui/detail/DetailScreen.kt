@@ -9,8 +9,9 @@ import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -30,31 +32,47 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
+import androidx.compose.material.icons.rounded.AccessTime
 import androidx.compose.material.icons.rounded.Directions
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
+import androidx.compose.material.icons.rounded.FormatQuote
+import androidx.compose.material.icons.rounded.Mail
+import androidx.compose.material.icons.rounded.NearMe
+import androidx.compose.material.icons.rounded.Phone
+import androidx.compose.material.icons.rounded.Public
+import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -66,18 +84,27 @@ import io.github.sammeeeeeeee.higiene.data.OsmDetails
 import io.github.sammeeeeeeee.higiene.data.OsmResult
 import io.github.sammeeeeeeee.higiene.data.Postcodes
 import io.github.sammeeeeeeee.higiene.ui.components.BusinessLogo
-import io.github.sammeeeeeeee.higiene.ui.components.Hairline
+import io.github.sammeeeeeeee.higiene.ui.components.DarkCard
+import io.github.sammeeeeeeee.higiene.ui.components.HeroIconButton
+import io.github.sammeeeeeeee.higiene.ui.components.HeroShape
 import io.github.sammeeeeeeee.higiene.ui.components.InfoCard
+import io.github.sammeeeeeeee.higiene.ui.components.OutlinePill
 import io.github.sammeeeeeeee.higiene.ui.components.PrimaryPill
 import io.github.sammeeeeeeee.higiene.ui.components.RatingBadge
+import io.github.sammeeeeeeee.higiene.ui.components.Reveal
 import io.github.sammeeeeeeee.higiene.ui.components.SectionTitle
 import io.github.sammeeeeeeee.higiene.ui.components.Tag
 import io.github.sammeeeeeeee.higiene.ui.components.TextLink
+import io.github.sammeeeeeeee.higiene.ui.components.rememberPop
+import io.github.sammeeeeeeee.higiene.ui.components.tactileClick
 import io.github.sammeeeeeeee.higiene.ui.formatDistance
 import io.github.sammeeeeeeee.higiene.ui.label
 import io.github.sammeeeeeeee.higiene.ui.pretty
 import io.github.sammeeeeeeee.higiene.ui.replyText
 import io.github.sammeeeeeeee.higiene.ui.scoreRows
+import io.github.sammeeeeeeee.higiene.ui.sharedElement
+import io.github.sammeeeeeeee.higiene.ui.typeIcon
+import io.github.sammeeeeeeee.higiene.ui.typeLabel
 import io.github.sammeeeeeeee.higiene.ui.theme.Fsa
 import io.github.sammeeeeeeee.higiene.ui.theme.LocalDisplay
 import io.github.sammeeeeeeee.higiene.ui.theme.LocalHero
@@ -89,62 +116,84 @@ fun DetailScreen(onBack: () -> Unit, onOpen: (Long) -> Unit, onOpenAddress: (Str
     val state by vm.state.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val haptics = LocalHapticFeedback.current
     val notifyPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
-
     val e = state.est
-    Column(Modifier.fillMaxSize()) {
-        val hero = LocalHero.current
+    val hero = LocalHero.current
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+    ) {
+        // Hero -------------------------------------------------------------------------------------
         Column(
             Modifier
                 .fillMaxWidth()
+                .clip(HeroShape)
                 .background(hero.background)
                 .windowInsetsPadding(WindowInsets.statusBars)
-                .padding(start = 4.dp, end = 4.dp, bottom = 20.dp),
+                .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 64.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.back), tint = hero.body) }
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                HeroIconButton(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.back), onBack, hero.body)
                 Spacer(Modifier.weight(1f))
                 if (e != null) {
-                    IconButton(onClick = { share(context, e) }) { Icon(Icons.Rounded.Share, stringResource(R.string.share), tint = hero.body) }
-                    IconButton(onClick = {
-                        val on = vm.toggleFavourite()
-                        if (on && Build.VERSION.SDK_INT >= 33 &&
-                            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
-                        ) notifyPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-                    }) {
-                        Icon(
-                            if (state.favourite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                            stringResource(if (state.favourite) R.string.unfavourite else R.string.favourite),
-                            tint = if (state.favourite) hero.accent else hero.body,
-                        )
-                    }
+                    HeroIconButton(Icons.Rounded.Share, stringResource(R.string.share), { share(context, e) }, hero.body)
+                    Spacer(Modifier.width(10.dp))
+                    val pop = rememberPop(state.favourite)
+                    HeroIconButton(
+                        if (state.favourite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                        stringResource(if (state.favourite) R.string.unfavourite else R.string.favourite),
+                        onClick = {
+                            val on = vm.toggleFavourite()
+                            haptics.performHapticFeedback(if (on) HapticFeedbackType.ToggleOn else HapticFeedbackType.ToggleOff)
+                            if (on && Build.VERSION.SDK_INT >= 33 &&
+                                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                            ) notifyPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        },
+                        tint = if (state.favourite) hero.accent else hero.body,
+                        modifier = Modifier.scale(pop),
+                    )
                 }
             }
             if (e != null) {
-                Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    BusinessLogo(e.typeId, state.osmBrand ?: state.brand, size = 52.dp)
-                    Spacer(Modifier.width(14.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(e.typeName, style = MaterialTheme.typography.labelMedium, color = hero.body.copy(alpha = 0.8f))
-                        state.distanceM?.let {
-                            Text(formatDistance(context, it, settings.miles) ?: "", style = MaterialTheme.typography.labelMedium, color = hero.body.copy(alpha = 0.8f))
-                        }
-                    }
+                BusinessLogo(e.typeId, state.osmBrand ?: state.brand, size = 64.dp, onDark = true, modifier = Modifier.sharedElement("logo-${e.id}"))
+                Text(e.name.uppercase(), style = LocalDisplay.current.title, color = hero.headline)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (e.typeName.isNotEmpty()) HeroTag(typeLabel(context, e.typeId, e.typeName), typeIcon(e.typeId))
+                    formatDistance(context, state.distanceM, settings.miles)?.let { HeroTag(it, Icons.Rounded.NearMe) }
                 }
-                Spacer(Modifier.height(12.dp))
-                Text(e.name, style = LocalDisplay.current.title, color = hero.headline, modifier = Modifier.padding(horizontal = 12.dp))
                 e.address?.let { addr ->
-                    Spacer(Modifier.height(8.dp))
-                    Text(listOfNotNull(addr, e.postcode).joinToString(", "), style = MaterialTheme.typography.bodyMedium, color = hero.body, modifier = Modifier.padding(horizontal = 12.dp))
+                    Text(listOfNotNull(addr, e.postcode).joinToString(", "), style = MaterialTheme.typography.bodyLarge, color = hero.body.copy(alpha = 0.9f))
                 }
             }
         }
 
         when {
-            state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            state.loading -> Box(Modifier.fillMaxWidth().padding(48.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Fsa.Green) }
             e == null -> Text(stringResource(R.string.detail_missing), Modifier.padding(24.dp))
             else -> Body(state, e, settings.osmDetails, onOpen, onOpenAddress, onLoadOsm = { vm.loadOsm() })
         }
+    }
+}
+
+@Composable
+private fun HeroTag(text: String, icon: ImageVector? = null) {
+    val hero = LocalHero.current
+    Row(
+        Modifier
+            .clip(CircleShape)
+            .background(Color.White.copy(alpha = 0.10f))
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (icon != null) {
+            Icon(icon, contentDescription = null, tint = hero.accent, modifier = Modifier.size(14.dp))
+            Spacer(Modifier.width(6.dp))
+        }
+        Text(text, style = MaterialTheme.typography.labelMedium, color = hero.body, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -161,156 +210,217 @@ private fun Body(
     val context = LocalContext.current
     Column(
         Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+            .fillMaxWidth()
+            .offset(y = (-44).dp)
             .padding(horizontal = 16.dp)
             .navigationBarsPadding(),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Spacer(Modifier.height(4.dp))
-        // Rating -------------------------------------------------------------------------------
-        RatingBadge(e, large = true, height = 80.dp)
-        Text(e.rating.label(context, e.welsh), style = MaterialTheme.typography.headlineSmall)
-        Text(
-            e.ratingDate?.let { stringResource(R.string.inspected_on, it.pretty()) } ?: stringResource(R.string.not_yet_inspected),
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        state.dataInfo?.importedAt?.let { at ->
-            Text(
-                stringResource(R.string.data_as_of, Instant.ofEpochMilli(at).atZone(ZoneId.systemDefault()).toLocalDate().pretty()),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        if (e.newRatingPending) {
-            InfoCard {
-                Text(stringResource(R.string.new_rating_pending_title), style = MaterialTheme.typography.titleMedium)
-                Text(stringResource(R.string.new_rating_pending_body), style = MaterialTheme.typography.bodyMedium)
+        // Rating card, lifted over the hero --------------------------------------------------------
+        Reveal(0) {
+            Surface(
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.surface,
+                shadowElevation = 10.dp,
+                tonalElevation = 0.dp,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    RatingBadge(e, large = true, height = 84.dp)
+                    Text(e.rating.label(context, e.welsh), style = LocalDisplay.current.section)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Rounded.Schedule, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            e.ratingDate?.let { stringResource(R.string.inspected_on, it.pretty()) } ?: stringResource(R.string.not_yet_inspected),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                    state.dataInfo?.importedAt?.let { at ->
+                        Text(
+                            stringResource(R.string.data_as_of, Instant.ofEpochMilli(at).atZone(ZoneId.systemDefault()).toLocalDate().pretty()),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (e.newRatingPending) {
+                        Tag(stringResource(R.string.new_rating_pending_title), strong = true)
+                        Text(stringResource(R.string.new_rating_pending_body), style = MaterialTheme.typography.bodySmall)
+                    }
+                }
             }
         }
 
-        val rows = scoreRows(e)
-        if (rows.isNotEmpty()) {
-            SectionTitle(stringResource(R.string.breakdown_title))
-            rows.forEach { r -> ScoreBar(stringResource(r.heading), stringResource(r.descriptor), r.step) }
-            Text(stringResource(R.string.breakdown_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        } else if (e.rating.numeric != null) {
-            Text(stringResource(R.string.breakdown_unavailable), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        // Actions ----------------------------------------------------------------------------------
+        Reveal(1) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp), itemVerticalAlignment = Alignment.CenterVertically) {
+                PrimaryPill(stringResource(R.string.directions), onClick = { directions(context, e) }, icon = Icons.Rounded.Directions)
+                OutlinePill(stringResource(R.string.fsa_page), onClick = { open(context, Uri.parse(e.fhrsUrl)) }, icon = Icons.AutoMirrored.Rounded.OpenInNew)
+            }
+        }
+        when {
+            e.loc?.approximate == true -> Note(stringResource(R.string.position_approx))
+            e.lat == null -> Note(stringResource(R.string.position_none))
         }
 
+        // Breakdown --------------------------------------------------------------------------------
+        val rows = scoreRows(e)
+        if (rows.isNotEmpty()) {
+            Reveal(2) {
+                InfoCard {
+                    Text(stringResource(R.string.breakdown_title), style = LocalDisplay.current.section)
+                    rows.forEachIndexed { i, r -> ScoreBar(stringResource(r.heading), stringResource(r.descriptor), r.step, delay = 200 + i * 140) }
+                    Text(stringResource(R.string.breakdown_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        } else if (e.rating.numeric != null) {
+            Note(stringResource(R.string.breakdown_unavailable))
+        }
+
+        // Right to reply ---------------------------------------------------------------------------
         e.reply?.let { raw ->
             val text = remember(raw) { replyText(raw) }
             if (text.isNotBlank()) {
-                SectionTitle(stringResource(R.string.reply_title))
-                InfoCard { Text(text, style = MaterialTheme.typography.bodyMedium) }
+                Reveal(3) {
+                    InfoCard {
+                        Icon(Icons.Rounded.FormatQuote, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
+                        Text(stringResource(R.string.reply_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(text, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
             }
         }
 
-        // Actions ------------------------------------------------------------------------------
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp), itemVerticalAlignment = Alignment.CenterVertically) {
-            PrimaryPill(stringResource(R.string.directions), onClick = { directions(context, e) }, icon = Icons.Rounded.Directions)
-            TextLink(stringResource(R.string.fsa_page), onClick = { open(context, Uri.parse(e.fhrsUrl)) })
-        }
-        if (e.loc?.approximate == true) {
-            Text(stringResource(R.string.position_approx), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        } else if (e.lat == null) {
-            Text(stringResource(R.string.position_none), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-
-        // Who's really cooking? ----------------------------------------------------------------
+        // Who's really cooking? --------------------------------------------------------------------
         if (state.sameSite.isNotEmpty() || state.samePostcode.isNotEmpty()) {
-            SectionTitle(stringResource(R.string.whos_cooking_title))
-            if (state.sameSite.isNotEmpty()) {
-                Text(pluralStringResource(R.plurals.same_site, state.sameSite.size, state.sameSite.size), style = MaterialTheme.typography.bodyMedium)
-                state.sameSite.take(12).forEach { MiniRow(it, onOpen) }
-                if (state.sameSite.size > 12) e.pcKey?.let { pc -> TextLink(stringResource(R.string.see_all), onClick = { onOpenAddress(pc) }) }
-            }
-            if (state.samePostcode.isNotEmpty()) {
-                e.pcKey?.let { pc ->
-                    TextLink(
-                        pluralStringResource(R.plurals.same_postcode, state.samePostcode.size, state.samePostcode.size, Postcodes.format(pc)),
-                        onClick = { onOpenAddress(pc) },
-                    )
+            Reveal(4) {
+                DarkCard(stringResource(R.string.whos_cooking_title).uppercase()) {
+                    if (state.sameSite.isNotEmpty()) {
+                        Text(pluralStringResource(R.plurals.same_site, state.sameSite.size, state.sameSite.size), style = MaterialTheme.typography.bodyMedium)
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            state.sameSite.take(12).forEach { MiniRow(it, onOpen) }
+                        }
+                    } else {
+                        Text(stringResource(R.string.whos_cooking_none_here), style = MaterialTheme.typography.bodyMedium)
+                    }
+                    e.pcKey?.let { pc ->
+                        val more = state.samePostcode.size
+                        if (more > 0 || state.sameSite.size > 12) {
+                            TextLink(
+                                if (more > 0) pluralStringResource(R.plurals.same_postcode, more, more, Postcodes.format(pc)) else stringResource(R.string.see_all),
+                                onClick = { onOpenAddress(pc) },
+                                color = Fsa.Lime,
+                            )
+                        }
+                    }
                 }
             }
         }
 
-        // Council -------------------------------------------------------------------------------
-        SectionTitle(stringResource(R.string.council_title))
-        InfoCard {
-            Text(state.authority?.name ?: stringResource(R.string.council_unknown), style = MaterialTheme.typography.titleMedium)
-            Text(stringResource(R.string.council_body), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            state.authority?.email?.let { email -> TextLink(email, onClick = { open(context, Uri.parse("mailto:$email")) }) }
-            state.authority?.url?.let { url -> TextLink(url.removePrefix("http://").removePrefix("https://"), onClick = { open(context, Uri.parse(url)) }) }
-        }
-
-        // OpenStreetMap ------------------------------------------------------------------------
+        // OpenStreetMap ----------------------------------------------------------------------------
         if (osmEnabled) {
-            SectionTitle(stringResource(R.string.osm_title))
-            when (val osm = state.osm) {
-                null -> if (state.osmLoading) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
-                is OsmResult.Found -> OsmCard(osm.details)
-                OsmResult.NotMapped -> Text(stringResource(R.string.osm_not_mapped), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                OsmResult.Throttled -> Text(stringResource(R.string.osm_throttled, OsmClient.DAILY_CAP), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                is OsmResult.Failed -> Column {
-                    Text(stringResource(R.string.osm_failed), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    TextLink(stringResource(R.string.try_again), onClick = onLoadOsm)
+            Reveal(5) {
+                InfoCard {
+                    Text(stringResource(R.string.osm_title), style = LocalDisplay.current.section)
+                    when (val osm = state.osm) {
+                        null -> if (state.osmLoading) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp, color = Fsa.Green)
+                        is OsmResult.Found -> OsmContent(osm.details)
+                        OsmResult.NotMapped -> Text(stringResource(R.string.osm_not_mapped), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        OsmResult.Throttled -> Text(stringResource(R.string.osm_throttled, OsmClient.DAILY_CAP), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        is OsmResult.Failed -> {
+                            Text(stringResource(R.string.osm_failed), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            TextLink(stringResource(R.string.try_again), onClick = onLoadOsm)
+                        }
+                    }
                 }
             }
         }
 
-        // History -------------------------------------------------------------------------------
+        // Council ------------------------------------------------------------------------------------
+        Reveal(6) {
+            InfoCard {
+                Text(stringResource(R.string.council_title), style = LocalDisplay.current.section)
+                Text(state.authority?.name ?: stringResource(R.string.council_unknown), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.council_body), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                state.authority?.email?.let { email -> ContactRow(Icons.Rounded.Mail, email) { open(context, Uri.parse("mailto:$email")) } }
+                state.authority?.url?.let { url -> ContactRow(Icons.Rounded.Public, url.removePrefix("http://").removePrefix("https://").removeSuffix("/")) { open(context, Uri.parse(url)) } }
+            }
+        }
+
+        // History ------------------------------------------------------------------------------------
         if (state.history.isNotEmpty()) {
-            SectionTitle(stringResource(R.string.history_title))
-            state.history.forEach { h ->
-                val seen = Instant.ofEpochMilli(h.seenAtMillis).atZone(ZoneId.systemDefault()).toLocalDate().pretty()
-                val text = when {
-                    h.newRating == null -> stringResource(R.string.history_removed, seen)
-                    h.oldRating != h.newRating -> stringResource(R.string.history_changed, seen, h.oldRating?.label(context) ?: "?", h.newRating.label(context))
-                    else -> stringResource(R.string.history_reinspected, seen, h.newDate?.pretty() ?: "?")
+            Reveal(7) {
+                InfoCard {
+                    Text(stringResource(R.string.history_title), style = LocalDisplay.current.section)
+                    state.history.forEach { h ->
+                        val seen = Instant.ofEpochMilli(h.seenAtMillis).atZone(ZoneId.systemDefault()).toLocalDate().pretty()
+                        val text = when {
+                            h.newRating == null -> stringResource(R.string.history_removed, seen)
+                            h.oldRating != h.newRating -> stringResource(R.string.history_changed, seen, h.oldRating?.label(context) ?: "?", h.newRating.label(context))
+                            else -> stringResource(R.string.history_reinspected, seen, h.newDate?.pretty() ?: "?")
+                        }
+                        Text(text, style = MaterialTheme.typography.bodyMedium)
+                    }
+                    Text(stringResource(R.string.history_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Text(text, style = MaterialTheme.typography.bodyMedium)
             }
-            Text(stringResource(R.string.history_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
 
-        Hairline()
         Text(
             stringResource(R.string.detail_footer, e.id.toString()),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
         )
-        Spacer(Modifier.height(24.dp))
     }
 }
 
 @Composable
-private fun ScoreBar(heading: String, descriptor: String, step: Int) {
-    // step 0 = very good ... 5 = urgent improvement necessary
+private fun Note(text: String) {
+    Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 4.dp))
+}
+
+/** Six capsules that fill one after another (0 = very good … 5 = urgent improvement). */
+@Composable
+private fun ScoreBar(heading: String, descriptor: String, step: Int, delay: Int) {
+    val fill = remember { Animatable(0f) }
+    LaunchedEffect(step) { fill.animateTo((6 - step).toFloat(), tween(durationMillis = 650, delayMillis = delay)) }
+    val color = barColor(step)
     Column(
         Modifier.semantics(mergeDescendants = true) { contentDescription = "$heading: $descriptor" },
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(verticalAlignment = Alignment.Top) {
             Text(heading, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-            Text(descriptor, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.width(12.dp))
+            Text(descriptor, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            for (i in 5 downTo 0) {
-                val filled = 5 - step >= 5 - i
+        Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            for (i in 0 until 6) {
+                val amount = (fill.value - i).coerceIn(0f, 1f)
                 Box(
                     Modifier
                         .weight(1f)
-                        .height(8.dp)
+                        .height(10.dp)
                         .clip(CircleShape)
-                        .background(if (filled) barColor(step) else MaterialTheme.colorScheme.surfaceVariant),
-                )
+                        .background(MaterialTheme.colorScheme.outlineVariant),
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                scaleX = amount
+                                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0.5f)
+                            }
+                            .clip(CircleShape)
+                            .background(color),
+                    )
+                }
             }
         }
     }
 }
 
-@Composable
 private fun barColor(step: Int): Color = when (step) {
     0, 1 -> Fsa.Lime
     2 -> Fsa.LightGreen
@@ -323,55 +433,78 @@ private fun MiniRow(e: Establishment, onOpen: (Long) -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
-            .clip(MaterialTheme.shapes.small)
-            .clickable { onOpen(e.id) }
-            .padding(vertical = 8.dp),
+            .clip(RoundedCornerShape(18.dp))
+            .background(Color.White.copy(alpha = 0.07f))
+            .tactileClick { onOpen(e.id) }
+            .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text(e.name, style = MaterialTheme.typography.titleSmall)
-            Text(e.typeName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(e.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = LocalHero.current.body)
+            Text(typeLabel(LocalContext.current, e.typeId, e.typeName), style = MaterialTheme.typography.bodySmall, color = LocalHero.current.body.copy(alpha = 0.75f))
         }
+        Spacer(Modifier.width(8.dp))
         RatingBadge(e, large = false, height = 32.dp)
+    }
+}
+
+@Composable
+private fun ContactRow(icon: ImageVector, text: String, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surface)
+            .tactileClick(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(32.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(18.dp))
+        }
+        Spacer(Modifier.width(12.dp))
+        Text(text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun OsmCard(d: OsmDetails) {
+private fun OsmContent(d: OsmDetails) {
     val context = LocalContext.current
-    InfoCard {
-        d.openingHours?.let { oh ->
-            Text(stringResource(R.string.osm_hours), style = MaterialTheme.typography.titleSmall)
-            Text(oh.split(';').joinToString("\n") { it.trim() }, style = MaterialTheme.typography.bodyMedium)
-        }
-        if (d.cuisine.isNotEmpty()) {
-            Text(stringResource(R.string.osm_cuisine), style = MaterialTheme.typography.titleSmall)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                d.cuisine.forEach { Tag(it.replaceFirstChar { c -> c.uppercase() }) }
+    d.openingHours?.let { oh ->
+        Row(verticalAlignment = Alignment.Top) {
+            Icon(Icons.Rounded.AccessTime, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp).padding(top = 2.dp))
+            Spacer(Modifier.width(10.dp))
+            Column {
+                Text(stringResource(R.string.osm_hours), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Text(oh.split(';').joinToString("\n") { it.trim() }, style = MaterialTheme.typography.bodyMedium)
             }
         }
-        val facts = buildList {
-            if (d.diets.isNotEmpty()) add(stringResource(R.string.osm_diets, d.diets.joinToString(", ")))
-            d.wheelchair?.let { add(stringResource(R.string.osm_wheelchair, it)) }
-            d.takeaway?.let { add(stringResource(R.string.osm_takeaway, it)) }
-            d.delivery?.let { add(stringResource(R.string.osm_delivery, it)) }
-            d.outdoorSeating?.let { add(stringResource(R.string.osm_outdoor, it)) }
+    }
+    if (d.cuisine.isNotEmpty()) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            d.cuisine.forEach { Tag(it.replaceFirstChar { c -> c.uppercase() }) }
+            d.diets.forEach { Tag(it.replaceFirstChar { c -> c.uppercase() }, strong = true) }
         }
-        facts.forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
-        d.website?.let { w -> TextLink(w.removePrefix("https://").removePrefix("http://").removeSuffix("/"), onClick = { open(context, Uri.parse(if (w.startsWith("http")) w else "https://$w")) }) }
-        d.menu?.let { m -> TextLink(stringResource(R.string.osm_menu), onClick = { open(context, Uri.parse(m)) }) }
-        d.phone?.let { p -> TextLink(p, onClick = { open(context, Uri.parse("tel:" + p.replace(" ", "")), Intent.ACTION_DIAL) }) }
-        d.email?.let { m -> TextLink(m, onClick = { open(context, Uri.parse("mailto:$m")) }) }
-        if (d.openingHours == null && d.cuisine.isEmpty() && facts.isEmpty() && d.website == null && d.phone == null) {
-            Text(stringResource(R.string.osm_sparse), style = MaterialTheme.typography.bodyMedium)
-        }
-        Text(
-            stringResource(R.string.osm_attribution),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.clickable { open(context, Uri.parse("https://www.openstreetmap.org/copyright")) },
-        )
+    }
+    val facts = buildList {
+        if (d.cuisine.isEmpty() && d.diets.isNotEmpty()) add(stringResource(R.string.osm_diets, d.diets.joinToString(", ")))
+        d.wheelchair?.let { add(stringResource(R.string.osm_wheelchair, it)) }
+        d.takeaway?.let { add(stringResource(R.string.osm_takeaway, it)) }
+        d.delivery?.let { add(stringResource(R.string.osm_delivery, it)) }
+        d.outdoorSeating?.let { add(stringResource(R.string.osm_outdoor, it)) }
+    }
+    facts.forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
+    d.website?.let { w -> ContactRow(Icons.Rounded.Public, w.removePrefix("https://").removePrefix("http://").removeSuffix("/")) { open(context, Uri.parse(if (w.startsWith("http")) w else "https://$w")) } }
+    d.phone?.let { p -> ContactRow(Icons.Rounded.Phone, p) { open(context, Uri.parse("tel:" + p.replace(" ", "")), Intent.ACTION_DIAL) } }
+    d.email?.let { m -> ContactRow(Icons.Rounded.Mail, m) { open(context, Uri.parse("mailto:$m")) } }
+    d.menu?.let { m -> TextLink(stringResource(R.string.osm_menu), onClick = { open(context, Uri.parse(m)) }) }
+    if (d.openingHours == null && d.cuisine.isEmpty() && facts.isEmpty() && d.website == null && d.phone == null) {
+        Text(stringResource(R.string.osm_sparse), style = MaterialTheme.typography.bodyMedium)
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        TextLink(stringResource(R.string.osm_attribution), onClick = { open(context, Uri.parse("https://www.openstreetmap.org/copyright")) }, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.weight(1f))
         TextLink(stringResource(R.string.osm_view), onClick = { open(context, Uri.parse(d.osmUrl)) })
     }
 }
@@ -404,5 +537,9 @@ private fun share(context: Context, e: Establishment) {
         append("\n").append(e.fhrsUrl)
     }
     val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
-    context.startActivity(Intent.createChooser(send, null))
+    try {
+        context.startActivity(Intent.createChooser(send, null))
+    } catch (_: ActivityNotFoundException) {
+        Toast.makeText(context, R.string.no_app, Toast.LENGTH_SHORT).show()
+    }
 }

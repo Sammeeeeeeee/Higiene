@@ -1,27 +1,26 @@
 package io.github.sammeeeeeeee.higiene.ui.settings
 
 import android.app.Application
+import androidx.compose.foundation.layout.Row
+import androidx.compose.ui.graphics.Color
+import io.github.sammeeeeeeee.higiene.ui.LocalBottomSpace
+import io.github.sammeeeeeeee.higiene.ui.components.DarkCard
+import io.github.sammeeeeeeee.higiene.ui.components.HeroHeader
+import io.github.sammeeeeeeee.higiene.ui.components.OutlinePill
+import io.github.sammeeeeeeee.higiene.ui.components.PillItem
+import io.github.sammeeeeeeee.higiene.ui.components.SegmentedPills
+import io.github.sammeeeeeeee.higiene.ui.nearby.PillProgress
 import android.content.Intent
 import android.net.Uri
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -41,17 +40,13 @@ import io.github.sammeeeeeeee.higiene.data.RefreshInterval
 import io.github.sammeeeeeeee.higiene.data.Repository
 import io.github.sammeeeeeeee.higiene.data.UserSettings
 import io.github.sammeeeeeeee.higiene.ui.RefreshUi
-import io.github.sammeeeeeeee.higiene.ui.components.Hairline
 import io.github.sammeeeeeeee.higiene.ui.components.InfoCard
-import io.github.sammeeeeeeee.higiene.ui.components.PillChip
 import io.github.sammeeeeeeee.higiene.ui.components.PrimaryPill
-import io.github.sammeeeeeeee.higiene.ui.components.SectionTitle
 import io.github.sammeeeeeeee.higiene.ui.components.TextLink
 import io.github.sammeeeeeeee.higiene.ui.nearby.SwitchRow
 import io.github.sammeeeeeeee.higiene.ui.refreshUiFlow
 import io.github.sammeeeeeeee.higiene.ui.theme.Fsa
 import io.github.sammeeeeeeee.higiene.ui.theme.LocalDisplay
-import io.github.sammeeeeeeee.higiene.ui.theme.LocalHero
 import io.github.sammeeeeeeee.higiene.work.RefreshWorker
 import io.github.sammeeeeeeee.higiene.work.Scheduler
 import kotlinx.coroutines.Dispatchers
@@ -99,35 +94,28 @@ private val stamp = DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm", Locale.UK)
 
 private fun Long.stamp() = Instant.ofEpochMilli(this).atZone(ZoneId.systemDefault()).format(stamp)
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(onLicences: () -> Unit, vm: SettingsViewModel = viewModel()) {
     val s by vm.settings.collectAsStateWithLifecycle()
     val refresh by vm.refresh.collectAsStateWithLifecycle()
     val info by vm.info.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val hero = LocalHero.current
     Column(
         Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState()),
     ) {
+        HeroHeader(stringResource(R.string.settings_title))
         Column(
-            Modifier
-                .fillMaxWidth()
-                .background(hero.background)
-                .windowInsetsPadding(WindowInsets.statusBars)
-                .padding(16.dp),
+            Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = LocalBottomSpace.current + 16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Text(stringResource(R.string.settings_title), style = LocalDisplay.current.title, color = hero.headline)
-        }
-        Column(Modifier.padding(16.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             // Data
-            SectionTitle(stringResource(R.string.settings_data))
-            InfoCard {
+            DarkCard(stringResource(R.string.settings_data).uppercase()) {
                 val d = info?.data
                 if (d != null && d.rows > 0) {
-                    Text(stringResource(R.string.settings_rows, NumberFormat.getIntegerInstance(Locale.UK).format(d.rows)), style = MaterialTheme.typography.titleMedium)
+                    Text(NumberFormat.getIntegerInstance(Locale.UK).format(d.rows), style = LocalDisplay.current.hero, color = Fsa.Lime)
+                    Text(stringResource(R.string.settings_rows_label), style = MaterialTheme.typography.titleMedium)
                     d.lastModified?.let { Text(stringResource(R.string.settings_file_date, it), style = MaterialTheme.typography.bodySmall) }
                     d.importedAt?.let { Text(stringResource(R.string.settings_imported, it.stamp()), style = MaterialTheme.typography.bodySmall) }
                     d.checkedAt?.let { Text(stringResource(R.string.settings_checked, it.stamp()), style = MaterialTheme.typography.bodySmall) }
@@ -138,49 +126,57 @@ fun SettingsScreen(onLicences: () -> Unit, vm: SettingsViewModel = viewModel()) 
                 } else {
                     Text(stringResource(R.string.settings_no_data), style = MaterialTheme.typography.bodyMedium)
                 }
-                info?.lastError?.let { Text(stringResource(R.string.settings_last_error, it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+                info?.lastError?.let { Text(stringResource(R.string.settings_last_error, it), style = MaterialTheme.typography.bodySmall, color = Color(0xFFFFB4AB)) }
                 when {
                     refresh.running -> {
                         Text(stringResource(R.string.progress_title), style = MaterialTheme.typography.bodyMedium)
-                        val f = refresh.fraction
-                        if (f != null) LinearProgressIndicator(progress = { f }, modifier = Modifier.fillMaxWidth(), color = Fsa.Green)
-                        else LinearProgressIndicator(Modifier.fillMaxWidth(), color = Fsa.Green)
+                        PillProgress(refresh.fraction, height = 10.dp)
                     }
                     refresh.waiting -> {
                         Text(stringResource(if (refresh.waitingForWifi) R.string.waiting_for_wifi else R.string.waiting_for_network), style = MaterialTheme.typography.bodyMedium)
-                        if (refresh.waitingForWifi) TextLink(stringResource(R.string.use_mobile_data), onClick = { vm.refreshNow(true) })
+                        if (refresh.waitingForWifi) TextLink(stringResource(R.string.use_mobile_data), onClick = { vm.refreshNow(true) }, color = Fsa.Lime)
                     }
                     else -> PrimaryPill(stringResource(R.string.refresh_now), onClick = { vm.refreshNow(false) }, icon = Icons.Rounded.Refresh)
                 }
-                Text(stringResource(R.string.settings_size_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.settings_size_note), style = MaterialTheme.typography.bodySmall)
             }
 
-            SectionTitle(stringResource(R.string.settings_refresh))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(RefreshInterval.DAILY to R.string.refresh_daily, RefreshInterval.WEEKLY to R.string.refresh_weekly, RefreshInterval.MANUAL to R.string.refresh_manual)
-                    .forEach { (v, label) -> PillChip(stringResource(label), s.refresh == v, { vm.setRefresh(v) }) }
+            InfoCard {
+                Text(stringResource(R.string.settings_refresh), style = LocalDisplay.current.section)
+                val intervals = listOf(RefreshInterval.DAILY to R.string.refresh_daily, RefreshInterval.WEEKLY to R.string.refresh_weekly, RefreshInterval.MANUAL to R.string.refresh_manual)
+                SegmentedPills(
+                    items = intervals.map { PillItem(stringResource(it.second)) },
+                    selected = intervals.indexOfFirst { it.first == s.refresh },
+                    onSelect = { vm.setRefresh(intervals[it].first) },
+                    track = MaterialTheme.colorScheme.surface,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                SwitchRow(stringResource(R.string.settings_wifi_only), s.wifiOnly, stringResource(R.string.settings_wifi_only_sub)) { vm.setWifiOnly(it) }
             }
-            SwitchRow(stringResource(R.string.settings_wifi_only), s.wifiOnly, stringResource(R.string.settings_wifi_only_sub)) { vm.setWifiOnly(it) }
-            Hairline()
 
-            SectionTitle(stringResource(R.string.settings_extras))
-            SwitchRow(stringResource(R.string.settings_osm), s.osmDetails, stringResource(R.string.settings_osm_sub)) { vm.setOsm(it) }
-            SwitchRow(stringResource(R.string.settings_logos), s.brandLogos, stringResource(R.string.settings_logos_sub)) { vm.setLogos(it) }
-            SwitchRow(stringResource(R.string.settings_miles), s.miles) { vm.setMiles(it) }
-            Hairline()
+            InfoCard {
+                Text(stringResource(R.string.settings_extras), style = LocalDisplay.current.section)
+                SwitchRow(stringResource(R.string.settings_osm), s.osmDetails, stringResource(R.string.settings_osm_sub)) { vm.setOsm(it) }
+                SwitchRow(stringResource(R.string.settings_logos), s.brandLogos, stringResource(R.string.settings_logos_sub)) { vm.setLogos(it) }
+                SwitchRow(stringResource(R.string.settings_miles), s.miles) { vm.setMiles(it) }
+            }
 
-            SectionTitle(stringResource(R.string.settings_privacy))
-            Text(stringResource(R.string.privacy_body), style = MaterialTheme.typography.bodyMedium)
-            Hairline()
+            InfoCard {
+                Text(stringResource(R.string.settings_privacy), style = LocalDisplay.current.section)
+                Text(stringResource(R.string.privacy_body), style = MaterialTheme.typography.bodyMedium)
+            }
 
-            SectionTitle(stringResource(R.string.settings_about))
-            Text(stringResource(R.string.about_body, BuildConfig.VERSION_NAME), style = MaterialTheme.typography.bodyMedium)
-            Text(stringResource(R.string.not_endorsed), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            TextLink(stringResource(R.string.licences_title), onClick = onLicences)
-            TextLink(stringResource(R.string.source_code), onClick = {
-                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Sammeeeeeeee/Higiene"))) }
-            })
-            Spacer(Modifier.height(24.dp))
+            InfoCard {
+                Text(stringResource(R.string.settings_about), style = LocalDisplay.current.section)
+                Text(stringResource(R.string.about_body, BuildConfig.VERSION_NAME), style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.not_endorsed), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinePill(stringResource(R.string.licences_short), onClick = onLicences)
+                    OutlinePill(stringResource(R.string.source_code), onClick = {
+                        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Sammeeeeeeee/Higiene"))) }
+                    })
+                }
+            }
         }
     }
 }

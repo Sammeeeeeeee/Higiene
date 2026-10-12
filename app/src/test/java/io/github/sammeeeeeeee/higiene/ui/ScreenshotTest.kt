@@ -2,7 +2,9 @@ package io.github.sammeeeeeeee.higiene.ui
 
 import android.content.Context
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import coil3.ImageLoader
 import coil3.SingletonImageLoader
@@ -57,6 +59,16 @@ class ScreenshotTest {
         app.graph.repo.notifyChanged()
     }
 
+    private fun settle() {
+        repeat(6) {
+            compose.waitForIdle()
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(400))
+            Thread.sleep(250)
+            compose.mainClock.advanceTimeBy(400)
+        }
+        compose.waitForIdle()
+    }
+
     private fun shot(name: String, dark: Boolean = false, open: Long? = null) {
         compose.setContent { HigieneTheme(darkTheme = dark) { AppNav(openEstablishment = open, onOpenedEstablishment = {}) } }
         // Let debounces (main looper) and database reads (IO threads) finish.
@@ -80,6 +92,16 @@ class ScreenshotTest {
     fun nearby() {
         importSample()
         shot("02-nearby")
+    }
+
+    @Test
+    fun filters() {
+        importSample()
+        compose.setContent { HigieneTheme { AppNav(openEstablishment = null, onOpenedEstablishment = {}) } }
+        settle()
+        compose.onNodeWithText("Filters").performClick()
+        settle()
+        compose.onRoot().captureRoboImage("$out/09-filters.png")
     }
 
     @Test
