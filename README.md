@@ -21,6 +21,7 @@ Needs Android 8.0 or newer.
 - Finds businesses other apps miss: about 1 in 8 restaurants have no map position in the FSA data. Higiene places them at their postcode centre. On the October 2026 file this cuts restaurants without a position from 17,689 to 6,008 (the rest publish no postcode, mostly home or mobile caterers; the app lists them by council).
 - **Who's really cooking?** Every business registered at the same address or postcode (delivery-only kitchens often share one).
 - OpenStreetMap extras on the detail page, shown only when OpenStreetMap has them: opening hours, cuisine, website, phone, diets.
+- Optional, with your own keys (Settings → Photos and Google ratings): a street photo of the shopfront (Google Street View, or Mapillary) and the Google rating, opening hours and phone. Built-in daily and monthly caps keep a Google key inside Google's free allowance. Without keys these cards don't appear.
 
 ## How it works
 
@@ -30,13 +31,15 @@ Needs Android 8.0 or newer.
 | Rating badges | [FSA images.zip](https://ratings.food.gov.uk/open-data), bundled unaltered | With app updates | FSA trademarks, [FSA terms](https://ratings.food.gov.uk/terms-and-conditions) |
 | Postcode positions (GB) | [OS Code-Point Open](https://www.ordnancesurvey.co.uk/products/code-point-open) | Checked monthly | OGL v3 |
 | Council names | [FSA API `/Authorities`](https://api.ratings.food.gov.uk/help) | Weekly | OGL v3 |
-| Hours, cuisine, website | [OpenStreetMap](https://www.openstreetmap.org/copyright) via Overpass, by `fhrs:id`, only for businesses you open | Cached 30 days; max 40 lookups a day | ODbL |
+| Hours, cuisine, website | [OpenStreetMap](https://www.openstreetmap.org/copyright), objects tagged `fhrs:id`, from a file built weekly by [`osm-data.yml`](.github/workflows/osm-data.yml) (`tools/osm_extract.py` on the Geofabrik UK extract) and published as the [`osm-data` release](https://github.com/Sammeeeeeeee/Higiene/releases/tag/osm-data) | Weekly (about 4 MB) | ODbL |
+| Street photo, Google rating and hours (optional) | Your own key: [Places API (New)](https://developers.google.com/maps/documentation/places/web-service) and [Street View Static API](https://developers.google.com/maps/documentation/streetview), or a [Mapillary](https://www.mapillary.com/developer) token | Fetched when you open a business; Google content is not stored (place IDs only) | [Google Maps terms](https://maps.google.com/help/terms_maps); Mapillary photos CC BY-SA 4.0 |
 | Chain names | [name-suggestion-index](https://github.com/osmlab/name-suggestion-index) (`tools/build_brands.py`) | With app updates | BSD-3-Clause |
 | Chain logos | Wikimedia Commons, then Facebook | Cached | Owners' trademarks |
 
 - The CSV is streamed straight into SQLite. Each row's hash is compared with the stored one, so a daily update rewrites only the rows that changed. The whole update is one transaction, committed only when the byte count and the server's `Content-MD5` match; a cut-off or truncated download changes nothing.
 - Missing positions: OS postcode centre first (OSGB36 → WGS84 with a Helmert shift, about 5 m error), then the average of FSA-located businesses with the same postcode (covers Northern Ireland, which Code-Point Open omits).
 - Distances, postcode look-ups and search run on the phone. The app never sends your location anywhere.
+- OpenStreetMap: the public Overpass servers don't allow apps to query them per business ([usage policy](https://dev.overpass-api.de/overpass-doc/en/preface/commons.html)), so a scheduled workflow extracts the ~134,000 UK objects with an `fhrs:id` and useful tags into a small file. The phone downloads it with the ratings and matches by FHRSID, offline.
 
 Higiene is not made, checked or endorsed by the Food Standards Agency.
 

@@ -20,6 +20,10 @@ data class UserSettings(
     val miles: Boolean = true,
     /** Last place the list was centred on. Stored only on this phone. */
     val lastCentre: Centre? = null,
+    /** The user's own Google Maps Platform key; blank = no Google cards. */
+    val googleKey: String = "",
+    /** The user's own Mapillary client token; blank = no Mapillary photos. */
+    val mapillaryToken: String = "",
 )
 
 private val Context.store by preferencesDataStore(name = "settings")
@@ -36,6 +40,8 @@ class Settings(private val context: Context) {
         val label = stringPreferencesKey("centre_label")
         val gps = booleanPreferencesKey("centre_gps")
         val approx = booleanPreferencesKey("centre_approx")
+        val googleKey = stringPreferencesKey("google_key")
+        val mapillary = stringPreferencesKey("mapillary_token")
     }
 
     val flow: Flow<UserSettings> = context.store.data.map { p ->
@@ -48,6 +54,8 @@ class Settings(private val context: Context) {
             brandLogos = p[K.logos] ?: true,
             miles = p[K.miles] ?: true,
             lastCentre = if (lat != null && lon != null) Centre(lat, lon, p[K.label] ?: "", p[K.gps] ?: false, p[K.approx] ?: false) else null,
+            googleKey = p[K.googleKey].orEmpty(),
+            mapillaryToken = p[K.mapillary].orEmpty(),
         )
     }
 
@@ -58,6 +66,8 @@ class Settings(private val context: Context) {
     suspend fun setOsmDetails(v: Boolean) = context.store.edit { it[K.osm] = v }
     suspend fun setBrandLogos(v: Boolean) = context.store.edit { it[K.logos] = v }
     suspend fun setMiles(v: Boolean) = context.store.edit { it[K.miles] = v }
+    suspend fun setGoogleKey(v: String) = context.store.edit { it[K.googleKey] = v.trim() }
+    suspend fun setMapillaryToken(v: String) = context.store.edit { it[K.mapillary] = v.trim() }
 
     suspend fun setLastCentre(c: Centre) = context.store.edit {
         it[K.lat] = c.lat

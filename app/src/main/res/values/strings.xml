@@ -227,15 +227,56 @@
     <string name="settings_wifi_only_sub">Do not use mobile data for automatic updates</string>
     <string name="settings_extras">Extras</string>
     <string name="settings_osm">OpenStreetMap details</string>
-    <string name="settings_osm_sub">Opening hours, cuisine, website and phone. Asks the OpenStreetMap server about a business when you open it (not your location). Limited to 40 a day.</string>
+    <string name="settings_osm_sub">Opening hours, cuisine, website and phone where volunteers have added them. Downloads a small file (about 4 MB) once a week with the ratings; nothing is sent about the businesses you open.</string>
     <string name="settings_logos">Chain logos</string>
     <string name="settings_logos_sub">Logos for chains such as Greggs or Tesco, from Wikimedia Commons or Facebook. Chains are recognised on the phone; only the logo image is downloaded.</string>
     <string name="settings_miles">Distances in miles</string>
     <string name="settings_privacy">Privacy</string>
-    <string name="privacy_body">Higiene never sends your location or your searches anywhere: distances and search run on this phone. (Android\'s own location service works as it does for any app.) The app downloads files from the FSA (ratings) and Ordnance Survey (postcodes). If switched on, it also asks OpenStreetMap about a business you open, and loads chain logos from Wikimedia or Facebook for the chains on your screen, so those services can see which business or chain is being shown. There are no accounts, adverts or analytics.</string>
+    <string name="privacy_body">Higiene never sends your location or your searches anywhere: distances and search run on this phone. (Android\'s own location service works as it does for any app.) The app downloads files from the FSA (ratings) and Ordnance Survey (postcodes). If switched on, it downloads a weekly OpenStreetMap file from this app\'s GitHub page and loads chain logos from Wikimedia or Facebook for the chains on your screen, so those services can see which chain is shown. Only if you add your own Google key or Mapillary token does the app ask Google or Mapillary about a business you open (its name, address or position); they also see your IP address. There are no accounts, adverts or analytics.</string>
     <string name="settings_about">About</string>
     <string name="about_body">Higiene %1$s. Free software under the GNU GPL v3.</string>
     <string name="source_code">Source code</string>
+
+    <!-- Street photo and Google, with the user's own keys -->
+    <string name="photo_desc">Street-level photo of %1$s</string>
+    <string name="photo_taken">Image %1$s</string>
+    <string name="photo_mapillary_by">Photo: %1$s on Mapillary · CC BY-SA 4.0</string>
+    <string name="photo_mapillary">Photo on Mapillary · CC BY-SA 4.0</string>
+    <string name="google_title">On Google</string>
+    <plurals name="google_reviews">
+        <item quantity="one">%1$s review</item>
+        <item quantity="other">%1$s reviews</item>
+    </plurals>
+    <string name="google_open_now">Open now</string>
+    <string name="google_closed_now">Closed now</string>
+    <string name="google_closed_permanently">Permanently closed, says Google</string>
+    <string name="google_open_maps">Open in Google Maps</string>
+
+    <!-- Settings: your own keys -->
+    <string name="keys_title">Photos and Google ratings</string>
+    <string name="keys_body">Add your own free keys to show a street photo of each business, plus its Google rating, hours and phone. Without keys these cards stay hidden. Keys stay on this phone. When you open a business, the service gets its name, address or position and your IP address.</string>
+    <string name="key_google_label">Google Maps Platform API key</string>
+    <string name="key_mapillary_label">Mapillary client token</string>
+    <string name="key_save">Save and test</string>
+    <string name="key_remove">Remove</string>
+    <string name="key_show">Show key</string>
+    <string name="key_hide">Hide key</string>
+    <string name="key_checking">Checking…</string>
+    <string name="key_ok">Key works.</string>
+    <string name="key_problem">%1$s refused the key: %2$s</string>
+    <string name="key_offline">Could not reach the service to check the key. It is saved; try again later.</string>
+    <string name="key_usage_google">This month: %1$d of %2$d look-ups and %3$d of %4$d photos. Today: %5$d of %6$d look-ups and %7$d of %8$d photos.</string>
+    <string name="key_usage_mapillary">Today: %1$d of %2$d photo searches.</string>
+    <string name="key_how_google">How to get a Google key</string>
+    <string name="key_how_mapillary">How to get a Mapillary token</string>
+    <string name="key_google_steps">1. Open console.cloud.google.com, create a project and add a billing account. Google asks for one even for free use.\n2. In APIs &amp; Services, enable Places API (New) and Street View Static API.\n3. In Credentials, create an API key.\n4. Restrict the key. Under API restrictions, choose the two APIs above. Under Application restrictions, choose Android apps and add this app with the package name and SHA-1 below.\n5. Optional: in Quotas, set a daily limit as a backstop.\n6. Paste the key above and tap Save and test.</string>
+    <string name="key_google_limits">Google\'s free allowance each month (shared by all your Google projects): 1,000 business look-ups and 10,000 street photos. Higiene stops at %1$d look-ups and %2$d photos a day, and %3$d and %4$d a month, so it stays inside the free allowance. Using Google is under Google\'s terms (maps.google.com/help/terms_maps).</string>
+    <string name="key_mapillary_steps">1. Sign up or sign in at mapillary.com.\n2. Open mapillary.com/dashboard/developers and register an app. It only needs to read.\n3. Copy its Client Token (it starts with MLY|) and paste it above.\nMapillary is free. Its photos are used when there is no Google key or Google has no photo. They are by Mapillary contributors under CC BY-SA 4.0.</string>
+    <string name="key_package">Package name</string>
+    <string name="key_sha1">SHA-1 certificate fingerprint</string>
+    <string name="copy">Copy</string>
+    <string name="copied">Copied</string>
+    <string name="open_link">Open %1$s</string>
 
     <!-- Licences -->
     <string name="licences_title">Licences and credits</string>
@@ -244,7 +285,11 @@
     <string name="lic_os_title">Postcode positions</string>
     <string name="lic_os_body">OS Code-Point Open, under the Open Government Licence v3.0.\nContains Ordnance Survey data © Crown copyright and database right %1$s.\nContains Royal Mail data © Royal Mail copyright and database right %1$s.\nContains National Statistics data © Crown copyright and database right %1$s.</string>
     <string name="lic_osm_title">OpenStreetMap</string>
-    <string name="lic_osm_body">Opening hours and other details © OpenStreetMap contributors, available under the Open Database Licence (openstreetmap.org/copyright). Fetched from the Overpass API.</string>
+    <string name="lic_osm_body">Opening hours and other details © OpenStreetMap contributors, available under the Open Database Licence (openstreetmap.org/copyright). Downloaded weekly as a file built from the Geofabrik UK extract, which is itself published under the ODbL.</string>
+    <string name="lic_google_title">Google Maps</string>
+    <string name="lic_google_body">Only with your own key. Ratings, hours and Street View images come from Google Maps under the Google Maps/Google Earth Additional Terms of Service (maps.google.com/help/terms_maps) and Google\'s Privacy Policy (policies.google.com/privacy). Nothing from Google is stored except place IDs.</string>
+    <string name="lic_mapillary_title">Mapillary</string>
+    <string name="lic_mapillary_body">Only with your own token. Street photos by Mapillary contributors, licensed under CC BY-SA 4.0 (creativecommons.org/licenses/by-sa/4.0), each credited to its author.</string>
     <string name="lic_brands_title">Chain names and logos</string>
     <string name="lic_brands_body">Chain names from the name-suggestion-index; Wikidata parts are CC0. Logos are trademarks of their owners and are loaded from Wikimedia Commons (each file\'s page there gives its licence) or Facebook.</string>
     <string name="lic_libs_title">Software</string>

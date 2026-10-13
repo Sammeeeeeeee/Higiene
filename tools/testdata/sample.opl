@@ -1,0 +1,14 @@
+# Test fixture for tools/test_osm_extract.py (OPL: https://osmcode.org/opl-file-format/).
+n1 v3 dV c11 t2024-05-01T10:00:00Z i42 usecret_user Tamenity=restaurant,name=The%20%Grill,fhrs:id=100,opening_hours=Mo-Su%20%12:00-22:00,cuisine=burger,website=https://grill.example,phone=+44%20%%20%%20%1234%20%567890,diet:vegetarian=yes,diet:vegan=only,diet:halal=no x-0.1 y51.5
+n2 v1 Tamenity=cafe,fhrs:id=200;0201,website=%20%,contact:website=https://cafe.example,contact:phone=01234%20%567890,wheelchair=limited x0 y0
+n3 v1 Tfhrs:id=300 x0 y0
+n4 v1 Tfhrs:id=abc,opening_hours=24/7 x0 y0
+n5 v1 Tfhrs:id=400,contact:email=hello@four.example,brand:wikidata=Q123 x0 y0
+n6 v1 Tfhrs:id=500,opening_hours=Mo-Fr%9%09:00-17:00%a%Sa%20%10:00-14:00,diet:gluten_free=yes,diet:kosher=only x0 y0
+n7 v1 Tfhrs:id=600,cuisine=indian x0 y0
+n8 v1 Tfhrs:id=600,cuisine=thai x0 y0
+n50 v1 Tamenity=pub,name=No%20%Id,opening_hours=24/7 x0 y0
+w9 v1 Tfhrs:id=100,url=https://other.example Nn1,n2
+w10 v2 Tfhrs:id=%20%7%20%%2c%%20%x%2c%%20%0,cuisine=pizza;kebab,takeaway=yes,delivery=no,outdoor_seating=yes N
+r11 v1 Ttype=multipolygon,fhrs:id=400,email=info@four.example,website:menu=https://four.example/menu M
+r12 v1 Tfhrs:id=201,website=https://bigger.example,phone=111,email=x@y.example,cuisine=coffee_shop M

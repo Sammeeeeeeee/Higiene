@@ -266,31 +266,6 @@ class Repository(private val db: Db, private val userDb: UserDb, private val pos
             if (it.moveToFirst()) LocalAuthority(it.getInt(0), it.getString(1), it.getStringOrNull(2), it.getStringOrNull(3)) else null
         }
 
-    // OpenStreetMap cache ------------------------------------------------------------------------
-
-    data class CachedOsm(val fetchedAt: Long, val json: String?)
-
-    fun cachedOsm(id: Long): CachedOsm? =
-        userDb.readableDatabase.rawQuery("SELECT fetched, json FROM osm WHERE id=?", arrayOf(id.toString())).use {
-            if (it.moveToFirst()) CachedOsm(it.getLong(0), it.getStringOrNull(1)) else null
-        }
-
-    fun cacheOsm(id: Long, json: String?) {
-        userDb.writableDatabase.execSQL("INSERT OR REPLACE INTO osm(id, fetched, json) VALUES(?,?,?)", arrayOf<Any?>(id, System.currentTimeMillis(), json))
-    }
-
-    /** Records one Overpass request (successful or not) for the daily fair-use cap. */
-    fun recordOsmCall() {
-        val w = userDb.writableDatabase
-        val now = System.currentTimeMillis()
-        w.execSQL("INSERT INTO osm_calls(at) VALUES(?)", arrayOf(now))
-        w.execSQL("DELETE FROM osm_calls WHERE at < ?", arrayOf(now - 2 * 24 * 60 * 60 * 1000L))
-    }
-
-    /** Overpass requests made since [sinceMillis], counting failures, to stay within fair use. */
-    fun osmCallsSince(sinceMillis: Long): Int =
-        userDb.readableDatabase.rawQuery("SELECT count(*) FROM osm_calls WHERE at >= ?", arrayOf(sinceMillis.toString())).use { if (it.moveToFirst()) it.getInt(0) else 0 }
-
     // Helpers ------------------------------------------------------------------------------------
 
     private fun filterSql(f: Filters): Pair<String, Array<String>> {
@@ -345,7 +320,6 @@ class Repository(private val db: Db, private val userDb: UserDb, private val pos
             return 2 * 6_371_008.8 * asin(sqrt(max(0.0, a)).coerceAtMost(1.0))
         }
 
-        private fun Cursor.getStringOrNull(i: Int) = if (isNull(i)) null else getString(i)
         private fun Cursor.getLongOrNull(i: Int) = if (isNull(i)) null else getLong(i)
         private fun Cursor.getIntOrNull(i: Int) = if (isNull(i)) null else getInt(i)
         private fun Cursor.getE6OrNull(i: Int) = if (isNull(i)) null else getLong(i) / 1e6

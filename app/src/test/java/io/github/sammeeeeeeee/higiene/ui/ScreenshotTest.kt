@@ -5,6 +5,9 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import coil3.ImageLoader
 import coil3.SingletonImageLoader
@@ -154,5 +157,40 @@ class ScreenshotTest {
         importSample()
         val id = app.graph.db.readableDatabase.rawQuery("SELECT id FROM est WHERE welsh = 1 AND rnum IS NOT NULL LIMIT 1", null).use { it.moveToFirst(); it.getLong(0) }
         shot("06-detail-welsh", open = id)
+    }
+
+    @Test
+    fun keys() {
+        importSample()
+        compose.setContent { HigieneTheme { io.github.sammeeeeeeee.higiene.ui.settings.SettingsScreen(onLicences = {}) } }
+        settle()
+        compose.onNodeWithText("Photos and Google ratings").performScrollTo()
+        settle()
+        compose.onRoot().captureRoboImage("$out/10-keys.png")
+        compose.onNodeWithText("How to get a Google key").performScrollTo().performClick()
+        settle()
+        compose.onNodeWithText("Package name").performScrollTo()
+        settle()
+        compose.onRoot().captureRoboImage("$out/11-keys-help.png")
+    }
+
+    @Test
+    fun googleCard() {
+        val place = io.github.sammeeeeeeee.higiene.data.GooglePlace(
+            placeId = "x", rating = 4.4, ratingCount = 1234, openNow = true,
+            hours = listOf("Monday: 12:00 – 22:00", "Tuesday: Closed", "Wednesday: 12:00 – 22:00"),
+            phone = "01223 000000", website = "https://72china.example", mapsUri = "https://maps.google.com/?cid=1", permanentlyClosed = false,
+        )
+        compose.setContent {
+            HigieneTheme {
+                androidx.compose.material3.Surface {
+                    androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.padding(16.dp)) {
+                        io.github.sammeeeeeeee.higiene.ui.detail.GoogleCard(place)
+                    }
+                }
+            }
+        }
+        settle()
+        compose.onRoot().captureRoboImage("$out/12-google-card.png")
     }
 }

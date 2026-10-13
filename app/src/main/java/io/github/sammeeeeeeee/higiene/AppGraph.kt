@@ -6,7 +6,11 @@ import io.github.sammeeeeeeee.higiene.data.Brands
 import io.github.sammeeeeeeee.higiene.data.CodePointImporter
 import io.github.sammeeeeeeee.higiene.data.Db
 import io.github.sammeeeeeeee.higiene.data.FsaImporter
-import io.github.sammeeeeeeee.higiene.data.OsmClient
+import io.github.sammeeeeeeee.higiene.data.ApiBudget
+import io.github.sammeeeeeeee.higiene.data.AppIdentity
+import io.github.sammeeeeeeee.higiene.data.GoogleClient
+import io.github.sammeeeeeeee.higiene.data.MapillaryClient
+import io.github.sammeeeeeeee.higiene.data.OsmData
 import io.github.sammeeeeeeee.higiene.data.PostcodeIndex
 import io.github.sammeeeeeeee.higiene.data.Repository
 import io.github.sammeeeeeeee.higiene.data.Settings
@@ -56,7 +60,11 @@ class AppGraph(context: Context) {
     val fsa = FsaImporter(db, http, ::postcodeIndex, File(app.cacheDir, "fsa"), favouriteIds = userDb::favouriteIds)
     val codePoint = CodePointImporter(db, http, postcodeFile)
     val authorities = Authorities(app, db, http)
-    val osm = OsmClient(http, repo)
+    val osm = OsmData(db, http)
+    val identity = AppIdentity.of(app)
+    val budget = ApiBudget(userDb)
+    val google = GoogleClient(http, userDb, budget, identity)
+    val mapillary = MapillaryClient(http, budget)
     val brands = Brands(app, http)
 
     companion object {

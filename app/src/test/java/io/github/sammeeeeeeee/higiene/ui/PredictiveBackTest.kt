@@ -3,7 +3,9 @@ package io.github.sammeeeeeeee.higiene.ui
 import androidx.activity.BackEventCompat
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
 import coil3.ImageLoader
 import coil3.SingletonImageLoader
 import coil3.svg.SvgDecoder
@@ -25,7 +27,8 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * Records frames of a back swipe from the detail page, for checking the animation by eye. Opt-in:
+ * Records frames of going back from the detail page by swipe and by the back arrow, to check by eye
+ * that they match. Opt-in:
  * HIGIENE_SCREENSHOTS=build/screens ./gradlew testDebugUnitTest --tests '*PredictiveBackTest*'
  */
 @RunWith(RobolectricTestRunner::class)
@@ -63,30 +66,40 @@ class PredictiveBackTest {
         compose.waitForIdle()
     }
 
-    private var frame = 0
-    private fun capture(label: String) {
-        compose.onRoot().captureRoboImage("$out/back/%02d-%s.png".format(frame++, label))
-    }
-
-    @Test
-    fun swipeBackFromDetail() {
+    private fun open() {
         // Like MainActivity: the request to open a business is cleared once it has been followed.
         val open = androidx.compose.runtime.mutableStateOf<Long?>(1472964)
         compose.setContent { HigieneTheme { AppNav(openEstablishment = open.value, onOpenedEstablishment = { open.value = null }) } }
         settle()
-        capture("start")
         compose.mainClock.autoAdvance = false
+    }
+
+    private fun record(dir: String, frames: Int = 10) {
+        repeat(frames) {
+            compose.mainClock.advanceTimeBy(40)
+            compose.onRoot().captureRoboImage("$out/$dir/%02d-%03dms.png".format(it, (it + 1) * 40))
+        }
+    }
+
+    /** A swipe that is dragged part way and released should look exactly like tapping the back arrow. */
+    @Test
+    fun swipeBackFromDetail() {
+        open()
         val back = compose.activity.onBackPressedDispatcher
         compose.runOnUiThread { back.dispatchOnBackStarted(BackEventCompat(0f, 1200f, 0f, BackEventCompat.EDGE_LEFT)) }
-        for (p in listOf(0.1f, 0.25f, 0.4f, 0.55f)) {
+        for (p in listOf(0.1f, 0.3f, 0.5f)) {
             compose.runOnUiThread { back.dispatchOnBackProgressed(BackEventCompat(p * 600f, 1200f, p, BackEventCompat.EDGE_LEFT)) }
             compose.mainClock.advanceTimeBy(48)
-            capture("drag-${(p * 100).toInt()}")
         }
+        compose.onRoot().captureRoboImage("$out/swipe/drag.png")
         compose.runOnUiThread { back.onBackPressed() }
-        repeat(14) {
-            compose.mainClock.advanceTimeBy(50)
-            capture("release-${(it + 1) * 50}ms")
-        }
+        record("swipe")
+    }
+
+    @Test
+    fun tapBackFromDetail() {
+        open()
+        compose.onNodeWithContentDescription("Back").performClick()
+        record("tap")
     }
 }
