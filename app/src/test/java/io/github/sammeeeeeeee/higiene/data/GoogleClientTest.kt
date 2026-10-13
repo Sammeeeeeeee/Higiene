@@ -218,6 +218,75 @@ class GoogleClientTest {
     }
 
     @Test
+    fun parsesTheFreeExtras() {
+        val p = GoogleClient.parsePlace(JSONObject("""{"id":"x",
+            "consumerAlert":{"overview":"Fake reviews were removed.","details":{"title":"Suspicious reviews","description":"We removed reviews that broke our policies.","aboutLink":{"title":"Learn more","uri":"https://support.google.com/x"}}},
+            "accessibilityOptions":{"wheelchairAccessibleEntrance":true,"wheelchairAccessibleRestroom":false},
+            "priceLevel":"PRICE_LEVEL_MODERATE",
+            "priceRange":{"startPrice":{"currencyCode":"GBP","units":"10"},"endPrice":{"currencyCode":"GBP","units":"20"}},
+            "regularSecondaryOpeningHours":[
+                {"secondaryHoursType":"KITCHEN","weekdayDescriptions":["Monday: 12:00 – 21:00"]},
+                {"secondaryHoursType":"SENIOR_HOURS","weekdayDescriptions":["Monday: 9:00 – 10:00"]}],
+            "googleMapsLinks":{"reviewsUri":"https://maps.google.com/r","writeAReviewUri":"https://maps.google.com/w","directionsUri":"https://maps.google.com/d"},
+            "pureServiceAreaBusiness":true,
+            "movedPlaceId":"NEW",
+            "photos":[{"name":"places/x/photos/P1","widthPx":4032,"heightPx":3024,
+                "authorAttributions":[{"displayName":"Jo Bloggs","uri":"https://maps.google.com/contrib/1","photoUri":"https://lh3.example/a"}],
+                "googleMapsUri":"https://maps.google.com/p"},{"name":"bogus"}]
+        }"""))
+        assertEquals(GooglePlace.Alert("Suspicious reviews", "Fake reviews were removed.\nWe removed reviews that broke our policies.", "Learn more", "https://support.google.com/x"), p.alert)
+        assertEquals(GooglePlace.Access(entrance = true, toilet = false, seating = null, parking = null), p.access)
+        assertEquals(2, p.priceLevel)
+        assertEquals("£10–20", p.priceRange)
+        // Only hours that matter for food are kept.
+        assertEquals(listOf(GooglePlace.ExtraHours("KITCHEN", listOf("Monday: 12:00 – 21:00"))), p.extraHours)
+        assertEquals("https://maps.google.com/r", p.reviewsUri)
+        assertEquals("https://maps.google.com/w", p.writeReviewUri)
+        assertTrue(p.serviceAreaOnly)
+        assertEquals("NEW", p.movedPlaceId)
+        assertEquals(listOf(GooglePlace.Photo("places/x/photos/P1", 4032, listOf(GooglePlace.Author("Jo Bloggs", "https://maps.google.com/contrib/1")), "https://maps.google.com/p")), p.photos)
+        assertTrue(p.hasDetails)
+    }
+
+    @Test
+    fun priceRanges() {
+        fun r(json: String) = GoogleClient.priceRange(JSONObject(json))
+        assertEquals("£50+", r("""{"startPrice":{"currencyCode":"GBP","units":"50"}}"""))
+        assertEquals("£10", r("""{"startPrice":{"currencyCode":"GBP","units":"10"},"endPrice":{"currencyCode":"GBP","units":"10"}}"""))
+        assertNull(r("""{"startPrice":{"currencyCode":"USD","units":"10"}}"""))
+    }
+
+    @Test
+    fun photoAddressIsACountedRequestWithTheKeyInAHeader() {
+        val photo = GooglePlace.Photo("places/x/photos/P1", 4032, emptyList(), null)
+        http.handler = { req ->
+            assertEquals("/v1/places/x/photos/P1/media", req.url.encodedPath)
+            assertEquals("true", req.url.queryParameter("skipHttpRedirect"))
+            assertNull(req.url.queryParameter("key"))
+            assertEquals("KEY", req.header("X-Goog-Api-Key"))
+            FakeHttp.json(req, 200, """{"name":"places/x/photos/P1/media","photoUri":"https://lh3.googleusercontent.com/p/abc"}""")
+        }
+        assertEquals("https://lh3.googleusercontent.com/p/abc", google.photoUri(photo, "KEY"))
+        assertEquals(1, budget.usage(Api.GOOGLE_PHOTOS).today)
+        // At the cap there is no request at all.
+        repeat(Api.GOOGLE_PHOTOS.perDay) { budget.take(Api.GOOGLE_PHOTOS) }
+        http.requests.clear()
+        assertNull(google.photoUri(photo, "KEY"))
+        assertTrue(http.requests.isEmpty())
+    }
+
+    @Test
+    fun detailsAskForTheFreeExtrasInTheSameCall() {
+        for (f in listOf("consumerAlert", "accessibilityOptions", "priceLevel", "priceRange", "regularSecondaryOpeningHours", "googleMapsLinks", "pureServiceAreaBusiness", "movedPlaceId", "photos")) {
+            assertTrue(f, GoogleClient.DETAIL_FIELDS.split(',').contains(f))
+        }
+        // Nothing from the dearer Atmosphere tier (reviews, summaries, serves*) sneaks in.
+        for (f in listOf("reviews", "reviewSummary", "editorialSummary", "servesVegetarianFood", "takeout", "delivery", "dineIn")) {
+            assertFalse(f, GoogleClient.DETAIL_FIELDS.split(',').contains(f))
+        }
+    }
+
+    @Test
     fun creditsThirdPartyProviders() {
         val p = GoogleClient.parsePlace(JSONObject("""{"id":"x","rating":4.0,"attributions":[{"provider":"Example Data Ltd","providerUri":"https://example.org"},{"provider":""}]}"""))
         assertEquals(listOf(GooglePlace.Attribution("Example Data Ltd", "https://example.org")), p.attributions)

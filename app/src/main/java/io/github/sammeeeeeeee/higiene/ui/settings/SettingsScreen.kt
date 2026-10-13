@@ -36,6 +36,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import io.github.sammeeeeeeee.higiene.data.Api
 import io.github.sammeeeeeeee.higiene.data.ApiBudget
 import io.github.sammeeeeeeee.higiene.data.GoogleClient
+import io.github.sammeeeeeeee.higiene.ui.components.Expandable
 import io.github.sammeeeeeeee.higiene.ui.components.Hairline
 import io.github.sammeeeeeeee.higiene.ui.components.tactileClick
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -155,14 +156,14 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
 
     val identity get() = graph.identity
 
-    data class KeyUsage(val search: ApiBudget.Usage, val details: ApiBudget.Usage, val photos: ApiBudget.Usage, val mapillary: ApiBudget.Usage)
+    data class KeyUsage(val details: ApiBudget.Usage, val photos: ApiBudget.Usage, val street: ApiBudget.Usage, val mapillary: ApiBudget.Usage)
 
     private val usageTick = MutableStateFlow(0)
     val usage: StateFlow<KeyUsage?> = usageTick
         .map {
             KeyUsage(
-                graph.budget.usage(Api.GOOGLE_SEARCH),
                 graph.budget.usage(Api.GOOGLE_DETAILS),
+                graph.budget.usage(Api.GOOGLE_PHOTOS),
                 graph.budget.usage(Api.GOOGLE_STREETVIEW),
                 graph.budget.usage(Api.MAPILLARY),
             )
@@ -333,22 +334,20 @@ private fun KeysCard(s: UserSettings, vm: SettingsViewModel) {
         KeyField(stringResource(R.string.key_google_label), s.googleKey, googleCheck, vm::saveGoogleKey)
         val u = usage
         if (s.googleKey.isNotBlank() && u != null) {
-            Text(
-                stringResource(
-                    R.string.key_usage_google,
-                    u.details.month, Api.GOOGLE_DETAILS.perMonth, u.photos.month, Api.GOOGLE_STREETVIEW.perMonth,
-                    u.details.today, Api.GOOGLE_DETAILS.perDay, u.photos.today, Api.GOOGLE_STREETVIEW.perDay,
-                ),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            UsageLine(R.string.usage_lookups, u.details, Api.GOOGLE_DETAILS)
+            UsageLine(R.string.usage_photos, u.photos, Api.GOOGLE_PHOTOS)
+            UsageLine(R.string.usage_street, u.street, Api.GOOGLE_STREETVIEW)
         }
         Expandable(stringResource(R.string.key_how_google)) {
             Text(stringResource(R.string.key_google_steps), style = MaterialTheme.typography.bodyMedium)
             CopyRow(stringResource(R.string.key_package), vm.identity.packageName)
             vm.identity.certSha1Colons?.let { CopyRow(stringResource(R.string.key_sha1), it) }
             Text(
-                stringResource(R.string.key_google_limits, Api.GOOGLE_DETAILS.perDay, Api.GOOGLE_STREETVIEW.perDay, Api.GOOGLE_DETAILS.perMonth, Api.GOOGLE_STREETVIEW.perMonth),
+                stringResource(
+                    R.string.key_google_limits,
+                    Api.GOOGLE_DETAILS.perDay, Api.GOOGLE_PHOTOS.perDay, Api.GOOGLE_STREETVIEW.perDay,
+                    Api.GOOGLE_DETAILS.perMonth, Api.GOOGLE_PHOTOS.perMonth, Api.GOOGLE_STREETVIEW.perMonth,
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -359,18 +358,21 @@ private fun KeysCard(s: UserSettings, vm: SettingsViewModel) {
 
         // Mapillary ---------------------------------------------------------------------------------
         KeyField(stringResource(R.string.key_mapillary_label), s.mapillaryToken, mapillaryCheck, vm::saveMapillaryToken)
-        if (s.mapillaryToken.isNotBlank() && u != null) {
-            Text(
-                stringResource(R.string.key_usage_mapillary, u.mapillary.today, Api.MAPILLARY.perDay),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        if (s.mapillaryToken.isNotBlank() && u != null) UsageLine(R.string.usage_mapillary, u.mapillary, Api.MAPILLARY)
         Expandable(stringResource(R.string.key_how_mapillary)) {
             Text(stringResource(R.string.key_mapillary_steps), style = MaterialTheme.typography.bodyMedium)
             LinkRow("mapillary.com/dashboard/developers", "https://www.mapillary.com/dashboard/developers")
         }
     }
+}
+
+@Composable
+private fun UsageLine(label: Int, u: ApiBudget.Usage, api: Api) {
+    Text(
+        stringResource(R.string.key_usage_line, stringResource(label), u.today, api.perDay, u.month, api.perMonth),
+        style = MaterialTheme.typography.bodySmall,
+        color = if (u.today >= api.perDay || u.month >= api.perMonth) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 /** A key entry: hidden by default, saved and checked with free calls when the user taps Save. */
@@ -415,28 +417,6 @@ private fun KeyField(label: String, saved: String, check: SettingsViewModel.Chec
                 color = MaterialTheme.colorScheme.error,
             )
             SettingsViewModel.Check.Offline -> Text(stringResource(R.string.key_offline), style = MaterialTheme.typography.bodySmall)
-        }
-    }
-}
-
-@Composable
-private fun Expandable(title: String, content: @Composable ColumnScope.() -> Unit) {
-    var open by rememberSaveable(title) { mutableStateOf(false) }
-    val turn by animateFloatAsState(if (open) 180f else 0f, label = "chevron")
-    Column {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .tactileClick { open = !open }
-                .padding(vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
-            Icon(Icons.Rounded.ExpandMore, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.rotate(turn))
-        }
-        AnimatedVisibility(open, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 4.dp)) { content() }
         }
     }
 }

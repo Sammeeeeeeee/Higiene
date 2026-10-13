@@ -81,6 +81,11 @@ import io.github.sammeeeeeeee.higiene.R
 import io.github.sammeeeeeeee.higiene.data.Establishment
 import io.github.sammeeeeeeee.higiene.data.OsmDetails
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.material.icons.automirrored.rounded.Accessible
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.WarningAmber
+import io.github.sammeeeeeeee.higiene.ui.components.Expandable
 import androidx.compose.material.icons.automirrored.rounded.StarHalf
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarOutline
@@ -192,7 +197,7 @@ fun DetailScreen(onBack: () -> Unit, onOpen: (Long) -> Unit, onOpenAddress: (Str
         when {
             state.loading -> Box(Modifier.fillMaxWidth().padding(48.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Fsa.Green) }
             e == null -> Text(stringResource(R.string.detail_missing), Modifier.padding(24.dp))
-            else -> Body(state, e, settings.osmDetails, onOpen, onOpenAddress, onPhotoFailed = vm::photoFailed)
+            else -> Body(state, e, settings.osmDetails, onOpen, onOpenAddress, onPhotoFailed = vm::photoFailed, onGooglePhotoFailed = vm::googlePhotoFailed)
         }
     }
 }
@@ -224,6 +229,7 @@ private fun Body(
     onOpen: (Long) -> Unit,
     onOpenAddress: (String) -> Unit,
     onPhotoFailed: () -> Unit,
+    onGooglePhotoFailed: () -> Unit,
 ) {
     val context = LocalContext.current
     val onFailed = onPhotoFailed
@@ -343,7 +349,7 @@ private fun Body(
 
         // Google, with the user's own key ------------------------------------------------------------
         state.google?.let { g ->
-            Reveal(5) { GoogleCard(g) }
+            Reveal(5) { GoogleCard(g, state.googlePhoto, e.name, onGooglePhotoFailed) }
         }
 
         // OpenStreetMap: shown only when it has details for this business --------------------------
@@ -547,14 +553,23 @@ private fun GoogleMapsCredit() {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun GoogleCard(g: GooglePlace) {
+internal fun GoogleCard(g: GooglePlace, photo: GooglePhotoShown? = null, name: String = "", onPhotoFailed: () -> Unit = {}) {
     val context = LocalContext.current
     InfoCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(stringResource(R.string.google_title), style = LocalDisplay.current.section, modifier = Modifier.weight(1f))
             GoogleMapsCredit()
         }
+        // Google's own warning comes first, before the rating it may concern.
+        g.alert?.let { AlertBox(it) }
+        photo?.let { GooglePhotoView(it, name, onPhotoFailed) }
         if (g.permanentlyClosed) Tag(stringResource(R.string.google_closed_permanently), strong = true)
+        g.movedPlaceId?.let { moved ->
+            Tag(stringResource(R.string.google_moved), strong = true)
+            TextLink(stringResource(R.string.google_moved_link), onClick = {
+                open(context, Uri.parse("https://www.google.com/maps/search/?api=1&query=" + Uri.encode(name) + "&query_place_id=" + Uri.encode(moved)))
+            })
+        }
         g.rating?.let { r ->
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("%.1f".format(java.util.Locale.UK, r), style = LocalDisplay.current.section)
@@ -570,7 +585,15 @@ internal fun GoogleCard(g: GooglePlace) {
                 }
             }
         }
-        if (!g.permanentlyClosed) g.openNow?.let { open -> Tag(stringResource(if (open) R.string.google_open_now else R.string.google_closed_now), strong = open) }
+        val price = listOfNotNull(
+            g.priceLevel?.let { if (it == 0) stringResource(R.string.google_price_free) else "£".repeat(it) },
+            g.priceRange,
+        ).joinToString(" · ")
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (!g.permanentlyClosed) g.openNow?.let { open -> Tag(stringResource(if (open) R.string.google_open_now else R.string.google_closed_now), strong = open) }
+            if (price.isNotEmpty()) Tag(stringResource(R.string.google_price, price))
+            if (g.serviceAreaOnly) Tag(stringResource(R.string.google_service_area))
+        }
         if (g.hours.isNotEmpty()) {
             Row(verticalAlignment = Alignment.Top) {
                 Icon(Icons.Rounded.AccessTime, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp).padding(top = 2.dp))
@@ -581,9 +604,21 @@ internal fun GoogleCard(g: GooglePlace) {
                 }
             }
         }
+        if (g.extraHours.isNotEmpty()) {
+            Expandable(stringResource(R.string.google_more_hours, g.extraHours.joinToString(", ") { hoursLabel(context, it.type).lowercase() })) {
+                g.extraHours.forEach { h ->
+                    Text(hoursLabel(context, h.type), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    Text(h.lines.joinToString("\n"), style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+        g.access?.takeIf { it.known }?.let { AccessRow(it) }
         g.phone?.let { p -> ContactRow(Icons.Rounded.Phone, p) { open(context, Uri.parse("tel:" + p.replace(" ", "")), Intent.ACTION_DIAL) } }
         g.website?.let { w -> ContactRow(Icons.Rounded.Public, w.removePrefix("https://").removePrefix("http://").removeSuffix("/")) { open(context, Uri.parse(w)) } }
-        g.mapsUri?.let { u -> TextLink(stringResource(R.string.google_open_maps), onClick = { open(context, Uri.parse(u)) }) }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            (g.reviewsUri ?: g.mapsUri)?.let { u -> TextLink(stringResource(if (g.reviewsUri != null) R.string.google_read_reviews else R.string.google_open_maps), onClick = { open(context, Uri.parse(u)) }) }
+            g.writeReviewUri?.let { u -> TextLink(stringResource(R.string.google_write_review), onClick = { open(context, Uri.parse(u)) }) }
+        }
         // Google requires its data providers to be credited where their data is shown.
         g.attributions.forEach { a ->
             val label = stringResource(R.string.google_data_from, a.provider)
@@ -592,6 +627,93 @@ internal fun GoogleCard(g: GooglePlace) {
         }
     }
 }
+
+/** Google's consumer alert, word for word, with its own link. */
+@Composable
+private fun AlertBox(a: GooglePlace.Alert) {
+    val context = LocalContext.current
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color(0xFFFFF4D6))
+            .padding(14.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Icon(Icons.Rounded.WarningAmber, contentDescription = null, tint = Color(0xFF8A5A00), modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(10.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(a.title ?: stringResource(R.string.google_alert), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = Color(0xFF3D2A00))
+            Text(a.text, style = MaterialTheme.typography.bodyMedium, color = Color(0xFF3D2A00))
+            a.linkUri?.let { u -> TextLink(a.linkTitle ?: stringResource(R.string.google_alert_more), onClick = { open(context, Uri.parse(u)) }, color = Color(0xFF6B4500)) }
+        }
+    }
+}
+
+/** A Google photo of the business. Never cached; credited to its author with a link to it on Google Maps. */
+@Composable
+private fun GooglePhotoView(p: GooglePhotoShown, name: String, onFailed: () -> Unit) {
+    val context = LocalContext.current
+    val request = remember(p.uri) {
+        ImageRequest.Builder(context).data(p.uri).diskCachePolicy(CachePolicy.DISABLED).crossfade(true).build()
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        AsyncImage(
+            model = request,
+            contentDescription = stringResource(R.string.google_photo_desc, name),
+            contentScale = ContentScale.Crop,
+            onError = { onFailed() },
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 10f)
+                .clip(RoundedCornerShape(20.dp))
+                .background(MaterialTheme.colorScheme.outlineVariant)
+                .then(if (p.photo.mapsUri != null) Modifier.tactileClick { open(context, Uri.parse(p.photo.mapsUri)) } else Modifier),
+        )
+        p.photo.authors.firstOrNull()?.let { a ->
+            val label = stringResource(R.string.google_photo_by, a.name)
+            if (a.uri != null) TextLink(label, onClick = { open(context, Uri.parse(a.uri)) }, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            else Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AccessRow(a: GooglePlace.Access) {
+    Row(verticalAlignment = Alignment.Top) {
+        Icon(Icons.AutoMirrored.Rounded.Accessible, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp).padding(top = 2.dp))
+        Spacer(Modifier.width(10.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(stringResource(R.string.google_access), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf(
+                    R.string.google_access_entrance to a.entrance,
+                    R.string.google_access_toilet to a.toilet,
+                    R.string.google_access_seating to a.seating,
+                    R.string.google_access_parking to a.parking,
+                ).forEach { (label, v) ->
+                    if (v != null) Tag(stringResource(label), icon = if (v) Icons.Rounded.Check else Icons.Rounded.Close, strong = v)
+                }
+            }
+        }
+    }
+}
+
+private fun hoursLabel(context: Context, type: String): String = context.getString(
+    when (type) {
+        "KITCHEN" -> R.string.hours_kitchen
+        "DELIVERY" -> R.string.hours_delivery
+        "TAKEOUT" -> R.string.hours_takeaway
+        "PICKUP" -> R.string.hours_pickup
+        "DRIVE_THROUGH" -> R.string.hours_drive_through
+        "BREAKFAST" -> R.string.hours_breakfast
+        "BRUNCH" -> R.string.hours_brunch
+        "LUNCH" -> R.string.hours_lunch
+        "DINNER" -> R.string.hours_dinner
+        else -> R.string.hours_happy_hour
+    },
+)
 
 /** Five stars, filled to the nearest half. */
 @Composable

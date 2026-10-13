@@ -7,6 +7,7 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import coil3.ImageLoader
@@ -180,11 +181,16 @@ class ScreenshotTest {
             placeId = "x", rating = 4.4, ratingCount = 1234, openNow = true,
             hours = listOf("Monday: 12:00 – 22:00", "Tuesday: Closed", "Wednesday: 12:00 – 22:00"),
             phone = "01223 000000", website = "https://72china.example", mapsUri = "https://maps.google.com/?cid=1", permanentlyClosed = false,
+            alert = io.github.sammeeeeeeee.higiene.data.GooglePlace.Alert("Suspicious reviews", "Google removed reviews that broke its policies.", "Learn more", "https://support.google.com/x"),
+            access = io.github.sammeeeeeeee.higiene.data.GooglePlace.Access(entrance = true, toilet = false, seating = true, parking = null),
+            priceLevel = 2, priceRange = "£10–20",
+            extraHours = listOf(io.github.sammeeeeeeee.higiene.data.GooglePlace.ExtraHours("KITCHEN", listOf("Monday: 12:00 – 21:00"))),
+            reviewsUri = "https://maps.google.com/r", writeReviewUri = "https://maps.google.com/w",
         )
         compose.setContent {
             HigieneTheme {
                 androidx.compose.material3.Surface {
-                    androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.padding(16.dp)) {
+                    androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.padding(16.dp).verticalScroll(androidx.compose.foundation.rememberScrollState())) {
                         io.github.sammeeeeeeee.higiene.ui.detail.GoogleCard(place)
                     }
                 }
@@ -192,5 +198,8 @@ class ScreenshotTest {
         }
         settle()
         compose.onRoot().captureRoboImage("$out/12-google-card.png")
+        compose.onNodeWithText("More hours: kitchen").performClick()
+        settle()
+        compose.onRoot().captureRoboImage("$out/13-google-card-hours.png")
     }
 }
