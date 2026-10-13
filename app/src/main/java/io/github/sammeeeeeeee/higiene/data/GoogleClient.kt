@@ -26,10 +26,37 @@ data class GooglePlace(
     val permanentlyClosed: Boolean,
     /** Third parties Google got some of this data from; Google requires them to be credited. */
     val attributions: List<Attribution> = emptyList(),
+    /** Google's warning when it sees suspicious reviews or a policy breach. */
+    val alert: Alert? = null,
+    val access: Access? = null,
+    /** 0 = free … 4 = very expensive. */
+    val priceLevel: Int? = null,
+    val priceRange: String? = null,
+    /** Kitchen, delivery, takeaway and similar hours. */
+    val extraHours: List<ExtraHours> = emptyList(),
+    val reviewsUri: String? = null,
+    val writeReviewUri: String? = null,
+    /** Serves customers at their own address (caterers, mobile vans): a photo of its base would mislead. */
+    val serviceAreaOnly: Boolean = false,
+    /** Set when the business has closed here and moved to this other Google place. */
+    val movedPlaceId: String? = null,
+    val photos: List<Photo> = emptyList(),
 ) {
     data class Attribution(val provider: String, val uri: String?)
+    data class Alert(val title: String?, val text: String, val linkTitle: String?, val linkUri: String?)
+    data class Access(val entrance: Boolean?, val toilet: Boolean?, val seating: Boolean?, val parking: Boolean?) {
+        val known get() = listOf(entrance, toilet, seating, parking).any { it != null }
+    }
+    data class ExtraHours(val type: String, val lines: List<String>)
+    data class Author(val name: String, val uri: String?)
 
-    val hasDetails get() = rating != null || openNow != null || hours.isNotEmpty() || phone != null || website != null || permanentlyClosed
+    /** A photo reference; the image itself is a separate, counted request. Names expire, so they are never kept. */
+    data class Photo(val name: String, val width: Int, val authors: List<Author>, val mapsUri: String?)
+
+    val hasDetails
+        get() = rating != null || openNow != null || hours.isNotEmpty() || phone != null || website != null || permanentlyClosed ||
+            alert != null || access?.known == true || priceLevel != null || priceRange != null || extraHours.isNotEmpty() ||
+            serviceAreaOnly || movedPlaceId != null || photos.isNotEmpty()
 }
 
 /** A street-level photo of the shopfront, from Google Street View or Mapillary. */
@@ -138,6 +165,23 @@ class GoogleClient(
         return this
     }
 
+    /**
+     * The image address for one of the place's photos, as a counted Place Photos request. Asks for the
+     * address instead of the image (skipHttpRedirect), so the key never appears in an image URL.
+     */
+    fun photoUri(photo: GooglePlace.Photo, key: String): String? {
+        if (!budget.take(Api.GOOGLE_PHOTOS)) return null
+        val url = "$placesBase/${photo.name}/media".toHttpUrl().newBuilder()
+            .addQueryParameter("maxWidthPx", "1200")
+            .addQueryParameter("skipHttpRedirect", "true")
+            .build()
+        val request = Request.Builder().url(url).header("X-Goog-Api-Key", key).apply { identity.headers.forEach { (k, v) -> header(k, v) } }.build()
+        http.newCall(request).execute().use { r ->
+            if (!r.isSuccessful) throw IOException("Google photo: HTTP ${r.code}")
+            return JSONObject(r.body.string()).optString("photoUri").takeIf { it.startsWith("https://") }
+        }
+    }
+
     // Street View -----------------------------------------------------------------------------------
 
     /** Checks for a photo with the free metadata call, then builds the (counted) image request. */
@@ -236,7 +280,9 @@ class GoogleClient(
         const val SEARCH_FIELDS = "places.id,places.displayName,places.location,places.formattedAddress"
 
         /** Enterprise tier (rating, hours, phone, website). Reviews are left out: they cost more and need author credits. */
-        const val DETAIL_FIELDS = "id,businessStatus,googleMapsUri,rating,userRatingCount,currentOpeningHours,regularOpeningHours,nationalPhoneNumber,websiteUri,attributions"
+        const val DETAIL_FIELDS = "id,businessStatus,googleMapsUri,rating,userRatingCount,currentOpeningHours,regularOpeningHours,nationalPhoneNumber,websiteUri,attributions," +
+            // All at or below the Enterprise tier already paid for, so they add nothing to the bill.
+            "consumerAlert,accessibilityOptions,priceLevel,priceRange,regularSecondaryOpeningHours,googleMapsLinks,pureServiceAreaBusiness,movedPlaceId,photos"
 
         internal fun parseCandidates(o: JSONObject): List<Candidate> {
             val places = o.optJSONArray("places") ?: return emptyList()
@@ -256,8 +302,11 @@ class GoogleClient(
 
         internal fun parsePlace(o: JSONObject): GooglePlace {
             fun JSONArray?.strings() = if (this == null) emptyList() else (0 until length()).mapNotNull { optString(it).ifEmpty { null } }
+            fun JSONObject.web(k: String) = optString(k).takeIf { it.startsWith("https://") || it.startsWith("http://") }
+            fun JSONObject.bool(k: String) = if (has(k)) optBoolean(k) else null
             val current = o.optJSONObject("currentOpeningHours")
             val regular = o.optJSONObject("regularOpeningHours")
+            val links = o.optJSONObject("googleMapsLinks")
             return GooglePlace(
                 placeId = o.optString("id"),
                 rating = o.optDouble("rating").takeUnless { it.isNaN() || it <= 0 },
@@ -275,7 +324,67 @@ class GoogleClient(
                         GooglePlace.Attribution(provider, x.optString("providerUri").takeIf { it.startsWith("https://") || it.startsWith("http://") })
                     }
                 }.orEmpty(),
+                alert = o.optJSONObject("consumerAlert")?.let { a ->
+                    val d = a.optJSONObject("details")
+                    val text = listOfNotNull(a.optString("overview").ifBlank { null }, d?.optString("description")?.ifBlank { null }).distinct().joinToString("\n")
+                    if (text.isEmpty()) null
+                    else GooglePlace.Alert(d?.optString("title")?.ifBlank { null }, text, d?.optJSONObject("aboutLink")?.optString("title")?.ifBlank { null }, d?.optJSONObject("aboutLink")?.web("uri"))
+                },
+                access = o.optJSONObject("accessibilityOptions")?.let { a ->
+                    GooglePlace.Access(a.bool("wheelchairAccessibleEntrance"), a.bool("wheelchairAccessibleRestroom"), a.bool("wheelchairAccessibleSeating"), a.bool("wheelchairAccessibleParking"))
+                },
+                priceLevel = when (o.optString("priceLevel")) {
+                    "PRICE_LEVEL_FREE" -> 0
+                    "PRICE_LEVEL_INEXPENSIVE" -> 1
+                    "PRICE_LEVEL_MODERATE" -> 2
+                    "PRICE_LEVEL_EXPENSIVE" -> 3
+                    "PRICE_LEVEL_VERY_EXPENSIVE" -> 4
+                    else -> null
+                },
+                priceRange = o.optJSONObject("priceRange")?.let { priceRange(it) },
+                extraHours = o.optJSONArray("regularSecondaryOpeningHours")?.let { a ->
+                    (0 until a.length()).mapNotNull { i ->
+                        val h = a.optJSONObject(i) ?: return@mapNotNull null
+                        val type = h.optString("secondaryHoursType").takeIf { it in SHOWN_HOURS } ?: return@mapNotNull null
+                        h.optJSONArray("weekdayDescriptions").strings().takeIf { it.isNotEmpty() }?.let { GooglePlace.ExtraHours(type, it) }
+                    }
+                }.orEmpty(),
+                reviewsUri = links?.web("reviewsUri"),
+                writeReviewUri = links?.web("writeAReviewUri"),
+                serviceAreaOnly = o.optBoolean("pureServiceAreaBusiness"),
+                movedPlaceId = o.optString("movedPlaceId").ifBlank { null },
+                photos = o.optJSONArray("photos")?.let { a ->
+                    (0 until a.length()).mapNotNull { i ->
+                        val p = a.optJSONObject(i) ?: return@mapNotNull null
+                        val name = p.optString("name").takeIf { it.startsWith("places/") && it.contains("/photos/") } ?: return@mapNotNull null
+                        val authors = p.optJSONArray("authorAttributions")?.let { aa ->
+                            (0 until aa.length()).mapNotNull { j ->
+                                val x = aa.optJSONObject(j) ?: return@mapNotNull null
+                                GooglePlace.Author(x.optString("displayName").ifBlank { return@mapNotNull null }, x.web("uri"))
+                            }
+                        }.orEmpty()
+                        GooglePlace.Photo(name, p.optInt("widthPx"), authors, p.web("googleMapsUri"))
+                    }
+                }.orEmpty(),
             )
+        }
+
+        /** Secondary hours worth showing for a food business, in this order. */
+        val SHOWN_HOURS = listOf("KITCHEN", "DELIVERY", "TAKEOUT", "PICKUP", "DRIVE_THROUGH", "BREAKFAST", "BRUNCH", "LUNCH", "DINNER", "HAPPY_HOUR")
+
+        /** "£10–20", "£50+" or "£10"; null for currencies other than pounds (the UK only gets GBP). */
+        internal fun priceRange(r: JSONObject): String? {
+            val start = r.optJSONObject("startPrice")
+            val end = r.optJSONObject("endPrice")
+            fun JSONObject.pounds() = takeIf { optString("currencyCode") == "GBP" }?.optString("units")?.toLongOrNull()
+            val a = start?.pounds() ?: return null
+            val b = end?.pounds()
+            return when {
+                end == null -> "£$a+"
+                b == null -> null
+                b <= a -> "£$a"
+                else -> "£$a–$b"
+            }
         }
 
         /**

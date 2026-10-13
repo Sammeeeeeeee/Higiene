@@ -21,7 +21,7 @@ Needs Android 8.0 or newer.
 - Finds businesses other apps miss: about 1 in 8 restaurants have no map position in the FSA data. Higiene places them at their postcode centre. On the October 2026 file this cuts restaurants without a position from 17,689 to 6,008 (the rest publish no postcode, mostly home or mobile caterers; the app lists them by council).
 - **Who's really cooking?** Every business registered at the same address or postcode (delivery-only kitchens often share one).
 - OpenStreetMap extras on the detail page, shown only when OpenStreetMap has them: opening hours, cuisine, website, phone, diets.
-- Optional, with your own keys (Settings → Photos and Google ratings): a street photo of the shopfront (Google Street View, or Mapillary) and the Google rating, opening hours and phone. Built-in daily and monthly caps keep a Google key inside Google's free allowance. Without keys these cards don't appear.
+- Optional, with your own keys (Settings → Photos and Google ratings): a street photo of the shopfront (Google Street View, or Mapillary), a Google photo of the business, and Google's rating, opening hours (plus kitchen and delivery hours), phone, price level, wheelchair access and its warning when reviews look suspicious. Built-in daily and monthly caps keep a Google key inside Google's free allowance. Without keys these cards don't appear.
 
 ## How it works
 

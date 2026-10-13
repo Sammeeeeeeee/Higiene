@@ -17,6 +17,9 @@ enum class Api(val perDay: Int, val perMonth: Int) {
     /** Place Details (New), Enterprise fields (rating, hours, phone, website): 1,000 free a month. */
     GOOGLE_DETAILS(perDay = 30, perMonth = 900),
 
+    /** Place Photos (New) images of the business: 1,000 free a month. */
+    GOOGLE_PHOTOS(perDay = 30, perMonth = 900),
+
     /** Street View Static API images: 10,000 free a month. (The metadata check is free.) */
     GOOGLE_STREETVIEW(perDay = 300, perMonth = 9_000),
 
