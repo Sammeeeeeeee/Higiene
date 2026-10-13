@@ -1,6 +1,47 @@
 package io.github.sammeeeeeeee.higiene.ui.settings
 
 import android.app.Application
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VisibilityOff
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import io.github.sammeeeeeeee.higiene.data.Api
+import io.github.sammeeeeeeee.higiene.data.ApiBudget
+import io.github.sammeeeeeeee.higiene.data.GoogleClient
+import io.github.sammeeeeeeee.higiene.ui.components.Hairline
+import io.github.sammeeeeeeee.higiene.ui.components.tactileClick
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.layout.Row
 import androidx.compose.ui.graphics.Color
 import io.github.sammeeeeeeee.higiene.ui.LocalBottomSpace
@@ -84,7 +125,96 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setRefresh(v: RefreshInterval) = viewModelScope.launch { graph.settings.setRefresh(v); reschedule() }
     fun setWifiOnly(v: Boolean) = viewModelScope.launch { graph.settings.setWifiOnly(v); reschedule() }
-    fun setOsm(v: Boolean) = viewModelScope.launch { graph.settings.setOsmDetails(v) }
+    fun setOsm(v: Boolean) = viewModelScope.launch {
+        graph.settings.setOsmDetails(v)
+        if (v) {
+            // Fetch the file now rather than at the next scheduled refresh. KEEP: a refresh that is
+            // already queued or running reads this setting before its OSM step, so don't restart it.
+            if (withContext(Dispatchers.IO) { graph.osm.rows() } == 0) {
+                Scheduler.refreshNow(getApplication(), graph.settings.current().wifiOnly, policy = androidx.work.ExistingWorkPolicy.KEEP)
+            }
+        } else {
+            withContext(Dispatchers.IO) { graph.osm.clear() }
+            graph.repo.notifyChanged()
+        }
+    }
+
+    /** Result of the last key check, per service. */
+    sealed interface Check {
+        data object Idle : Check
+        data object Checking : Check
+        data object Ok : Check
+        data class Problem(val api: String, val message: String) : Check
+        data object Offline : Check
+    }
+
+    private val _googleCheck = MutableStateFlow<Check>(Check.Idle)
+    val googleCheck: StateFlow<Check> = _googleCheck.asStateFlow()
+    private val _mapillaryCheck = MutableStateFlow<Check>(Check.Idle)
+    val mapillaryCheck: StateFlow<Check> = _mapillaryCheck.asStateFlow()
+
+    val identity get() = graph.identity
+
+    data class KeyUsage(val search: ApiBudget.Usage, val details: ApiBudget.Usage, val photos: ApiBudget.Usage, val mapillary: ApiBudget.Usage)
+
+    private val usageTick = MutableStateFlow(0)
+    val usage: StateFlow<KeyUsage?> = usageTick
+        .map {
+            KeyUsage(
+                graph.budget.usage(Api.GOOGLE_SEARCH),
+                graph.budget.usage(Api.GOOGLE_DETAILS),
+                graph.budget.usage(Api.GOOGLE_STREETVIEW),
+                graph.budget.usage(Api.MAPILLARY),
+            )
+        }
+        .flowOn(Dispatchers.IO)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    fun refreshUsage() = usageTick.update { it + 1 }
+
+    private var googleJob: kotlinx.coroutines.Job? = null
+    private var mapillaryJob: kotlinx.coroutines.Job? = null
+
+    /** Saves the key and checks it; a newer save or a removal cancels an unfinished check. */
+    fun saveGoogleKey(key: String) {
+        googleJob?.cancel()
+        googleJob = viewModelScope.launch { checkGoogle(key) }
+    }
+
+    fun saveMapillaryToken(token: String) {
+        mapillaryJob?.cancel()
+        mapillaryJob = viewModelScope.launch { checkMapillary(token) }
+    }
+
+    private suspend fun checkGoogle(key: String) {
+        graph.settings.setGoogleKey(key)
+        if (key.isBlank()) {
+            _googleCheck.value = Check.Idle
+            return
+        }
+        _googleCheck.value = Check.Checking
+        _googleCheck.value = withContext(Dispatchers.IO) {
+            runCatching { graph.google.checkKey(key.trim()) }.fold(
+                onSuccess = { if (it is GoogleClient.KeyCheck.Problem) Check.Problem(it.api, it.message) else Check.Ok },
+                onFailure = { Check.Offline },
+            )
+        }
+    }
+
+    private suspend fun checkMapillary(token: String) {
+        graph.settings.setMapillaryToken(token)
+        if (token.isBlank()) {
+            _mapillaryCheck.value = Check.Idle
+            return
+        }
+        _mapillaryCheck.value = Check.Checking
+        _mapillaryCheck.value = withContext(Dispatchers.IO) {
+            runCatching { graph.mapillary.checkToken(token.trim()) }.fold(
+                onSuccess = { problem -> if (problem != null) Check.Problem("Mapillary", problem) else Check.Ok },
+                onFailure = { Check.Offline },
+            )
+        }
+    }
     fun setLogos(v: Boolean) = viewModelScope.launch { graph.settings.setBrandLogos(v) }
     fun setMiles(v: Boolean) = viewModelScope.launch { graph.settings.setMiles(v) }
     fun refreshNow(anyNetwork: Boolean) = viewModelScope.launch {
@@ -167,6 +297,8 @@ fun SettingsScreen(onLicences: () -> Unit, vm: SettingsViewModel = viewModel()) 
                 SwitchRow(stringResource(R.string.settings_miles), s.miles) { vm.setMiles(it) }
             }
 
+            KeysCard(s, vm)
+
             InfoCard {
                 Text(stringResource(R.string.settings_privacy), style = LocalDisplay.current.section)
                 Text(stringResource(R.string.privacy_body), style = MaterialTheme.typography.bodyMedium)
@@ -185,4 +317,161 @@ fun SettingsScreen(onLicences: () -> Unit, vm: SettingsViewModel = viewModel()) 
             }
         }
     }
+}
+
+@Composable
+private fun KeysCard(s: UserSettings, vm: SettingsViewModel) {
+    val usage by vm.usage.collectAsStateWithLifecycle()
+    val googleCheck by vm.googleCheck.collectAsStateWithLifecycle()
+    val mapillaryCheck by vm.mapillaryCheck.collectAsStateWithLifecycle()
+    LaunchedEffect(googleCheck, mapillaryCheck) { vm.refreshUsage() }
+    InfoCard {
+        Text(stringResource(R.string.keys_title), style = LocalDisplay.current.section)
+        Text(stringResource(R.string.keys_body), style = MaterialTheme.typography.bodyMedium)
+
+        // Google ------------------------------------------------------------------------------------
+        KeyField(stringResource(R.string.key_google_label), s.googleKey, googleCheck, vm::saveGoogleKey)
+        val u = usage
+        if (s.googleKey.isNotBlank() && u != null) {
+            Text(
+                stringResource(
+                    R.string.key_usage_google,
+                    u.details.month, Api.GOOGLE_DETAILS.perMonth, u.photos.month, Api.GOOGLE_STREETVIEW.perMonth,
+                    u.details.today, Api.GOOGLE_DETAILS.perDay, u.photos.today, Api.GOOGLE_STREETVIEW.perDay,
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Expandable(stringResource(R.string.key_how_google)) {
+            Text(stringResource(R.string.key_google_steps), style = MaterialTheme.typography.bodyMedium)
+            CopyRow(stringResource(R.string.key_package), vm.identity.packageName)
+            vm.identity.certSha1Colons?.let { CopyRow(stringResource(R.string.key_sha1), it) }
+            Text(
+                stringResource(R.string.key_google_limits, Api.GOOGLE_DETAILS.perDay, Api.GOOGLE_STREETVIEW.perDay, Api.GOOGLE_DETAILS.perMonth, Api.GOOGLE_STREETVIEW.perMonth),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            LinkRow("console.cloud.google.com", "https://console.cloud.google.com/")
+        }
+
+        Hairline()
+
+        // Mapillary ---------------------------------------------------------------------------------
+        KeyField(stringResource(R.string.key_mapillary_label), s.mapillaryToken, mapillaryCheck, vm::saveMapillaryToken)
+        if (s.mapillaryToken.isNotBlank() && u != null) {
+            Text(
+                stringResource(R.string.key_usage_mapillary, u.mapillary.today, Api.MAPILLARY.perDay),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Expandable(stringResource(R.string.key_how_mapillary)) {
+            Text(stringResource(R.string.key_mapillary_steps), style = MaterialTheme.typography.bodyMedium)
+            LinkRow("mapillary.com/dashboard/developers", "https://www.mapillary.com/dashboard/developers")
+        }
+    }
+}
+
+/** A key entry: hidden by default, saved and checked with free calls when the user taps Save. */
+@Composable
+private fun KeyField(label: String, saved: String, check: SettingsViewModel.Check, onSave: (String) -> Unit) {
+    var text by rememberSaveable(saved) { mutableStateOf(saved) }
+    var visible by rememberSaveable { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedTextField(
+            value = text,
+            onValueChange = { text = it.trim() },
+            label = { Text(label) },
+            singleLine = true,
+            shape = RoundedCornerShape(16.dp),
+            visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
+            trailingIcon = {
+                IconButton(onClick = { visible = !visible }) {
+                    Icon(
+                        if (visible) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                        contentDescription = stringResource(if (visible) R.string.key_hide else R.string.key_show),
+                    )
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            PrimaryPill(stringResource(R.string.key_save), onClick = { onSave(text) }, enabled = text.isNotBlank() && check != SettingsViewModel.Check.Checking)
+            if (saved.isNotBlank()) TextLink(stringResource(R.string.key_remove), onClick = { text = ""; onSave("") })
+        }
+        when (check) {
+            SettingsViewModel.Check.Idle -> Unit
+            SettingsViewModel.Check.Checking -> Text(stringResource(R.string.key_checking), style = MaterialTheme.typography.bodySmall)
+            SettingsViewModel.Check.Ok -> Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = Fsa.Green, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(stringResource(R.string.key_ok), style = MaterialTheme.typography.bodySmall)
+            }
+            is SettingsViewModel.Check.Problem -> Text(
+                stringResource(R.string.key_problem, check.api, check.message),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+            SettingsViewModel.Check.Offline -> Text(stringResource(R.string.key_offline), style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+@Composable
+private fun Expandable(title: String, content: @Composable ColumnScope.() -> Unit) {
+    var open by rememberSaveable(title) { mutableStateOf(false) }
+    val turn by animateFloatAsState(if (open) 180f else 0f, label = "chevron")
+    Column {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .tactileClick { open = !open }
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
+            Icon(Icons.Rounded.ExpandMore, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.rotate(turn))
+        }
+        AnimatedVisibility(open, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 4.dp)) { content() }
+        }
+    }
+}
+
+/** A value the user needs to paste into the Google console, with a copy button. */
+@Composable
+private fun CopyRow(label: String, value: String) {
+    val context = LocalContext.current
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surface)
+            .tactileClick {
+                val cm = context.getSystemService(android.content.ClipboardManager::class.java)
+                cm?.setPrimaryClip(android.content.ClipData.newPlainText(label, value))
+                // Android 13+ shows its own confirmation.
+                if (android.os.Build.VERSION.SDK_INT < 33) android.widget.Toast.makeText(context, R.string.copied, android.widget.Toast.LENGTH_SHORT).show()
+            }
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(value, style = MaterialTheme.typography.bodySmall.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace))
+        }
+        Spacer(Modifier.width(8.dp))
+        Icon(Icons.Rounded.ContentCopy, contentDescription = stringResource(R.string.copy), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+    }
+}
+
+@Composable
+private fun LinkRow(text: String, url: String) {
+    val context = LocalContext.current
+    TextLink(stringResource(R.string.open_link, text), onClick = {
+        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+    })
 }

@@ -1,0 +1,112 @@
+name: OSM data
+
+# Builds osm-fhrs.tsv.gz, the OpenStreetMap details (opening hours, website, phone, cuisine...) the app
+# shows for food businesses, matched by the OSM fhrs:id tag (the FSA FHRSID), and publishes it as an asset
+# of the "osm-data" release. The Overpass API usage policy does not allow app backends or per-user lookups,
+# so instead this job reads the weekly Geofabrik united-kingdom extract with tools/osm_extract.py and the
+# app downloads the asset (about once a week).
+on:
+  schedule:
+    - cron: '23 4 * * 1'
+  # Also when the extractor or this workflow changes on main, so a merge publishes a fresh file at once.
+  push:
+    branches: [main]
+    paths:
+      - tools/osm_extract.py
+      - .github/workflows/osm-data.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: osm-data
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        run: |
+          python3 --version
+          python3 -m venv .venv
+          .venv/bin/pip install --disable-pip-version-check osmium==4.3.1
+
+      - name: Unit tests
+        run: .venv/bin/python -I -m unittest discover -s tools -p 'test_*.py' -v
+
+      - name: Download UK extract
+        run: |
+          curl -fsSL --retry 5 --retry-delay 10 -o united-kingdom-latest.osm.pbf https://download.geofabrik.de/europe/united-kingdom-latest.osm.pbf
+          curl -fsSL --retry 5 --retry-delay 10 -o united-kingdom-latest.osm.pbf.md5 https://download.geofabrik.de/europe/united-kingdom-latest.osm.pbf.md5
+          md5sum -c united-kingdom-latest.osm.pbf.md5
+          ls -l united-kingdom-latest.osm.pbf
+
+      - name: Extract
+        id: extract
+        run: |
+          .venv/bin/python -I tools/osm_extract.py united-kingdom-latest.osm.pbf osm-fhrs.tsv
+          rows=$(( $(wc -l < osm-fhrs.tsv) - 2 ))
+          if (( rows < 50000 )); then
+            echo "::error::osm-fhrs.tsv has only $rows rows (expected at least 50000)"
+            exit 1
+          fi
+          {
+            echo "rows=$rows"
+            echo "timestamp=$(head -n 1 osm-fhrs.tsv | cut -d ' ' -f 4)"
+            echo "columns=$(sed -n '2{p;q}' osm-fhrs.tsv | sed 's/\t/, /g')"
+          } >> "$GITHUB_OUTPUT"
+          gzip -9n osm-fhrs.tsv
+          sha256sum osm-fhrs.tsv.gz > osm-fhrs.tsv.gz.sha256
+          ls -l osm-fhrs.tsv.gz
+          cat osm-fhrs.tsv.gz.sha256
+
+      - name: Write release notes
+        env:
+          ROWS: ${{ steps.extract.outputs.rows }}
+          TIMESTAMP: ${{ steps.extract.outputs.timestamp }}
+          COLUMNS: ${{ steps.extract.outputs.columns }}
+        run: |
+          {
+            echo "\`osm-fhrs.tsv.gz\`: OpenStreetMap details (opening hours, website, phone, cuisine and more) for UK food businesses, keyed by FSA FHRSID (the OSM \`fhrs:id\` tag). Rebuilt every Monday; the Higiene app downloads it."
+            echo
+            echo "- Rows: $ROWS"
+            echo "- Data timestamp: $TIMESTAMP"
+            echo "- SHA-256: \`$(cut -d ' ' -f 1 osm-fhrs.tsv.gz.sha256)\`"
+            echo "- Format: gzip-compressed UTF-8 TSV. Line 1 is \`# higiene-osm 1 <data timestamp>\`, line 2 the column names, then one row per FHRSID in ascending order. Empty means not tagged."
+            echo "- Columns (tab-separated): $COLUMNS"
+            echo
+            echo "Contains information from OpenStreetMap (© OpenStreetMap contributors), available under the Open Database Licence (ODbL) 1.0: https://opendatacommons.org/licenses/odbl/1-0/ — see https://www.openstreetmap.org/copyright. Built by .github/workflows/osm-data.yml from the Geofabrik united-kingdom extract."
+          } > notes.md
+          cat notes.md
+
+      # Runs on other branches stop here: they build and check the file but never replace the published one.
+      - name: Keep the file (not main)
+        if: github.ref != 'refs/heads/main'
+        uses: actions/upload-artifact@v7
+        with:
+          name: osm-fhrs
+          path: |
+            osm-fhrs.tsv.gz
+            osm-fhrs.tsv.gz.sha256
+            notes.md
+
+      - name: Publish
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if ! gh release view osm-data > /dev/null; then
+            gh release create osm-data --title "OpenStreetMap details (weekly)" --notes-file notes.md --latest=false --target "$GITHUB_SHA"
+          fi
+          gh release upload osm-data osm-fhrs.tsv.gz osm-fhrs.tsv.gz.sha256 --clobber
+          gh release edit osm-data --notes-file notes.md --latest=false

@@ -20,7 +20,7 @@ import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Downloads the FSA CSV (skipped via ETag when unchanged), then the OS postcode file when missing
- * or a month old, and alerts on rating changes for favourites.
+ * or a month old, then the OpenStreetMap details file, and alerts on rating changes for favourites.
  */
 class RefreshWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
 
@@ -72,6 +72,14 @@ class RefreshWorker(context: Context, params: WorkerParameters) : CoroutineWorke
                     .getOrDefault(false)
                 // Positions were added in place, which fragments the table: compact once (~20% smaller).
                 if (rebuilt) runCatching { graph.db.writableDatabase.execSQL("VACUUM") }
+                graph.repo.notifyChanged()
+            }
+
+            // OpenStreetMap details: a ~4 MB weekly file, skipped by ETag when unchanged. Optional, so a
+            // failure here never fails the refresh.
+            if (graph.settings.current().osmDetails) {
+                runCatching { graph.osm.refresh(isStopped = { isStopped }) }
+                    .onFailure { if (it is CancellationException) throw it }
                 graph.repo.notifyChanged()
             }
 

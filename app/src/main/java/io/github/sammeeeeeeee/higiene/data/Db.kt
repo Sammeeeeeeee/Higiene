@@ -5,11 +5,7 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
 /**
- * One SQLite database for FSA data and the user's own state (favourites, seen history, cached OSM
- * details). Write-ahead logging lets the UI keep reading while a refresh runs in one transaction.
- */
-/**
- * The user's own data (favourites, cached OpenStreetMap details) lives in a separate file so that
+ * The user's own data (favourites, API usage, Google place IDs) lives in a separate file so that
  * writing it never waits behind a ratings import holding the main database's write lock.
  */
 class UserDb(context: Context) : SQLiteOpenHelper(context, NAME, null, VERSION) {
@@ -19,18 +15,32 @@ class UserDb(context: Context) : SQLiteOpenHelper(context, NAME, null, VERSION) 
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE fav(id INTEGER PRIMARY KEY, name TEXT NOT NULL, added INTEGER NOT NULL)")
-        db.execSQL("CREATE TABLE osm(id INTEGER PRIMARY KEY, fetched INTEGER NOT NULL, json TEXT)")
-        db.execSQL("CREATE TABLE osm_calls(at INTEGER NOT NULL)")
+        createV2(db)
     }
 
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {}
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        if (oldVersion < 2) {
+            // v0.1 asked the Overpass server per business; details now come from a weekly file.
+            db.execSQL("DROP TABLE IF EXISTS osm")
+            db.execSQL("DROP TABLE IF EXISTS osm_calls")
+            createV2(db)
+        }
+    }
+
+    private fun createV2(db: SQLiteDatabase) {
+        // One row per paid or rate-limited request to a service that uses the user's own key.
+        db.execSQL("CREATE TABLE api_calls(api TEXT NOT NULL, at INTEGER NOT NULL)")
+        db.execSQL("CREATE INDEX api_calls_api_at ON api_calls(api, at)")
+        // Google place ID per FHRSID: the only Places content Google allows apps to keep.
+        db.execSQL("CREATE TABLE gplace(id INTEGER PRIMARY KEY, place TEXT, matched INTEGER NOT NULL, at INTEGER NOT NULL)")
+    }
 
     fun favouriteIds(): Set<Long> =
         readableDatabase.rawQuery("SELECT id FROM fav", null).use { c -> buildSet { while (c.moveToNext()) add(c.getLong(0)) } }
 
     companion object {
         const val NAME = "user.db"
-        const val VERSION = 1
+        const val VERSION = 2
     }
 }
 
@@ -91,10 +101,25 @@ class Db(context: Context) : SQLiteOpenHelper(context, NAME, null, VERSION) {
         db.execSQL("CREATE INDEX history_id ON history(id)")
         db.execSQL("CREATE TABLE area(code TEXT PRIMARY KEY, lat REAL NOT NULL, lon REAL NOT NULL) WITHOUT ROWID")
         db.execSQL("CREATE TABLE meta(k TEXT PRIMARY KEY, v TEXT) WITHOUT ROWID")
+        createOsm(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // First schema; future migrations go here.
+        if (oldVersion < 2) {
+            // Test builds before v0.1 kept an OSM cache (and favourites) here under these names;
+            // both hold nothing the app still reads. The OSM table is refilled from the weekly file.
+            db.execSQL("DROP TABLE IF EXISTS osm")
+            db.execSQL("DROP TABLE IF EXISTS fav")
+            createOsm(db)
+        }
+    }
+
+    /** OpenStreetMap details by FHRSID, replaced weekly from the published file (see OsmData). */
+    private fun createOsm(db: SQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE osm(id INTEGER PRIMARY KEY, el TEXT NOT NULL, hours TEXT, cuisine TEXT, website TEXT, phone TEXT, " +
+                "email TEXT, menu TEXT, brand TEXT, wheelchair TEXT, takeaway TEXT, delivery TEXT, outdoor TEXT, diets TEXT)",
+        )
     }
 
     fun meta(key: String): String? =
@@ -107,7 +132,7 @@ class Db(context: Context) : SQLiteOpenHelper(context, NAME, null, VERSION) {
 
     companion object {
         const val NAME = "higiene.db"
-        const val VERSION = 1
+        const val VERSION = 2
 
         const val META_ETAG = "csv_etag"
         const val META_LAST_MODIFIED = "csv_last_modified"
@@ -118,5 +143,11 @@ class Db(context: Context) : SQLiteOpenHelper(context, NAME, null, VERSION) {
         const val META_CODEPOINT_AT = "codepoint_checked_at"
         const val META_CODEPOINT_YEAR = "codepoint_year"
         const val META_AUTHORITIES_AT = "authorities_at"
+        const val META_OSM_ETAG = "osm_etag"
+        const val META_OSM_ROWS = "osm_rows"
+        const val META_OSM_DATE = "osm_date"
+        const val META_OSM_CHECKED_AT = "osm_checked_at"
     }
 }
+
+internal fun android.database.Cursor.getStringOrNull(i: Int): String? = if (isNull(i)) null else getString(i)

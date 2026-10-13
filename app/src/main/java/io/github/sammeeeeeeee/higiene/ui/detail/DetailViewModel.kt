@@ -8,8 +8,9 @@ import io.github.sammeeeeeeee.higiene.HigieneApp
 import io.github.sammeeeeeeee.higiene.data.Brands
 import io.github.sammeeeeeeee.higiene.data.Establishment
 import io.github.sammeeeeeeee.higiene.data.HistoryEntry
-import io.github.sammeeeeeeee.higiene.data.LocalAuthority
-import io.github.sammeeeeeeee.higiene.data.OsmResult
+import io.github.sammeeeeeeee.higiene.data.GooglePlace
+import io.github.sammeeeeeeee.higiene.data.OsmDetails
+import io.github.sammeeeeeeee.higiene.data.StreetPhoto
 import io.github.sammeeeeeeee.higiene.data.Repository
 import io.github.sammeeeeeeee.higiene.data.UserSettings
 import kotlinx.coroutines.Dispatchers
@@ -34,9 +35,12 @@ data class DetailState(
     val sameSite: List<Establishment> = emptyList(),
     val samePostcode: List<Establishment> = emptyList(),
     val history: List<HistoryEntry> = emptyList(),
-    val authority: LocalAuthority? = null,
-    val osm: OsmResult? = null,
-    val osmLoading: Boolean = false,
+    /** From the weekly OpenStreetMap file; null when OSM has nothing for this business. */
+    val osm: OsmDetails? = null,
+    /** Only with the user's Google key; kept for this screen only. */
+    val google: GooglePlace? = null,
+    /** Street View (Google key) or Mapillary (token); null without a key or a photo. */
+    val photo: StreetPhoto? = null,
     val dataInfo: Repository.DataInfo? = null,
 )
 
@@ -68,26 +72,51 @@ class DetailViewModel(app: Application, saved: SavedStateHandle) : AndroidViewMo
                 sameSite = e?.let { graph.repo.sameSite(it) }.orEmpty(),
                 samePostcode = e?.let { graph.repo.samePostcode(it) }.orEmpty(),
                 history = graph.repo.history(id),
-                authority = e?.let { graph.repo.authority(it.laCode) },
                 dataInfo = graph.repo.dataInfo(),
+                osm = if (s.osmDetails) graph.osm.details(id) else null,
             )
         }
-        _state.update { loaded.copy(osm = it.osm, osmLoading = it.osmLoading, osmBrand = it.osmBrand) }
-        if (s.osmDetails && _state.value.osm == null && loaded.est != null) loadOsm(s.brandLogos)
-    }
-
-    fun loadOsm(logos: Boolean = settings.value.brandLogos) {
-        if (_state.value.osmLoading) return
-        _state.update { it.copy(osmLoading = true) }
-        viewModelScope.launch {
-            val result = withContext(Dispatchers.IO) { graph.osm.details(id) }
-            // OSM's brand:wikidata is more reliable than matching names.
-            val brand = if (logos && result is OsmResult.Found) {
-                result.details.brandQid?.let { qid -> withContext(Dispatchers.IO) { graph.brands.byQid(qid) } }
-            } else null
-            _state.update { it.copy(osm = result, osmLoading = false, osmBrand = brand) }
+        _state.update { loaded.copy(osmBrand = it.osmBrand, google = it.google, photo = it.photo) }
+        val e = loaded.est ?: return
+        // OSM's brand:wikidata is more reliable than matching names.
+        if (s.brandLogos && loaded.osm?.brandQid != null && _state.value.osmBrand == null) {
+            viewModelScope.launch {
+                val brand = withContext(Dispatchers.IO) { runCatching { graph.brands.byQid(loaded.osm.brandQid) }.getOrNull() }
+                _state.update { it.copy(osmBrand = brand) }
+            }
+        }
+        if (!extrasStarted) {
+            extrasStarted = true
+            loadExtras(e, s)
         }
     }
+
+    private var extrasStarted = false
+
+    /**
+     * Google details and a street photo, only with the user's own keys. Any failure (no match, cap
+     * reached, key refused, offline) just leaves the card out.
+     */
+    private fun loadExtras(e: Establishment, s: UserSettings) {
+        if (s.googleKey.isNotBlank()) {
+            viewModelScope.launch {
+                val place = withContext(Dispatchers.IO) { runCatching { graph.google.place(e, s.googleKey) }.getOrNull() }
+                if (place != null && place.hasDetails) _state.update { it.copy(google = place) }
+            }
+        }
+        if (s.googleKey.isNotBlank() || s.mapillaryToken.isNotBlank()) {
+            viewModelScope.launch {
+                val photo = withContext(Dispatchers.IO) {
+                    val google = if (s.googleKey.isNotBlank()) runCatching { graph.google.streetPhoto(e, s.googleKey) }.getOrNull() else null
+                    google ?: if (s.mapillaryToken.isNotBlank()) runCatching { graph.mapillary.photo(e, s.mapillaryToken) }.getOrNull() else null
+                }
+                if (photo != null) _state.update { it.copy(photo = photo) }
+            }
+        }
+    }
+
+    /** The image itself failed to load (e.g. the key is not enabled for Street View): drop the card. */
+    fun photoFailed() = _state.update { it.copy(photo = null) }
 
     fun toggleFavourite(): Boolean {
         val on = !_state.value.favourite

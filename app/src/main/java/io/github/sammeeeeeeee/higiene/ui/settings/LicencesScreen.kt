@@ -59,6 +59,10 @@ fun LicencesScreen(onBack: () -> Unit) {
             InfoCard { Text(stringResource(R.string.lic_os_body, osYear), style = MaterialTheme.typography.bodyMedium) }
             SectionTitle(stringResource(R.string.lic_osm_title))
             InfoCard { Text(stringResource(R.string.lic_osm_body), style = MaterialTheme.typography.bodyMedium) }
+            SectionTitle(stringResource(R.string.lic_google_title))
+            InfoCard { Text(stringResource(R.string.lic_google_body), style = MaterialTheme.typography.bodyMedium) }
+            SectionTitle(stringResource(R.string.lic_mapillary_title))
+            InfoCard { Text(stringResource(R.string.lic_mapillary_body), style = MaterialTheme.typography.bodyMedium) }
             SectionTitle(stringResource(R.string.lic_brands_title))
             InfoCard {
                 Text(stringResource(R.string.lic_brands_body), style = MaterialTheme.typography.bodyMedium)

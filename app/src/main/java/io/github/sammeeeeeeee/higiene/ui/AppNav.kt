@@ -1,5 +1,6 @@
 package io.github.sammeeeeeeee.higiene.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
@@ -157,6 +158,13 @@ fun AppNav(openEstablishment: Long?, onOpenedEstablishment: () -> Unit) {
                     }
                 }
             }
+        }
+
+        // A back swipe plays the same animation as the back arrow, started when the swipe is released,
+        // instead of the navigation library's own swipe-tracking one. Registered after the NavHost so it
+        // takes priority; off on the start page so the system can go home.
+        BackHandler(enabled = entry != null && nav.previousBackStackEntry != null) {
+            if (entry?.lifecycle?.currentState == Lifecycle.State.RESUMED) nav.popBackStack()
         }
 
         // Soft fade behind the floating pill so list content doesn't clash with it.

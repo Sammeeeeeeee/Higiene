@@ -39,8 +39,17 @@ object Scheduler {
         wm.enqueueUniquePeriodicWork(PERIODIC, ExistingPeriodicWorkPolicy.UPDATE, request)
     }
 
-    /** Refresh started by the user. [anyNetwork] lets them use mobile data once. */
-    fun refreshNow(context: Context, wifiOnly: Boolean, anyNetwork: Boolean = false, force: Boolean = false) {
+    /**
+     * Refresh started by the user. [anyNetwork] lets them use mobile data once. [policy] KEEP leaves
+     * a refresh that is already queued or running alone instead of restarting it.
+     */
+    fun refreshNow(
+        context: Context,
+        wifiOnly: Boolean,
+        anyNetwork: Boolean = false,
+        force: Boolean = false,
+        policy: ExistingWorkPolicy = ExistingWorkPolicy.REPLACE,
+    ) {
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(if (wifiOnly && !anyNetwork) NetworkType.UNMETERED else NetworkType.CONNECTED)
             .build()
@@ -49,6 +58,6 @@ object Scheduler {
             .setInputData(workDataOf(RefreshWorker.KEY_USER to true, RefreshWorker.KEY_FORCE to force))
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.MINUTES)
             .build()
-        WorkManager.getInstance(context).enqueueUniqueWork(NOW, ExistingWorkPolicy.REPLACE, request)
+        WorkManager.getInstance(context).enqueueUniqueWork(NOW, policy, request)
     }
 }
