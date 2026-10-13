@@ -24,7 +24,11 @@ data class GooglePlace(
     val website: String?,
     val mapsUri: String?,
     val permanentlyClosed: Boolean,
+    /** Third parties Google got some of this data from; Google requires them to be credited. */
+    val attributions: List<Attribution> = emptyList(),
 ) {
+    data class Attribution(val provider: String, val uri: String?)
+
     val hasDetails get() = rating != null || openNow != null || hours.isNotEmpty() || phone != null || website != null || permanentlyClosed
 }
 
@@ -81,6 +85,9 @@ class GoogleClient(
     }
 
     private fun placeIdFor(e: Establishment, key: String): String? {
+        // With neither a position nor a postcode, a name-only search across Great Britain can't be
+        // checked against anything.
+        if ((e.lat == null || e.lon == null) && e.postcode == null) return null
         val now = clock()
         userDb.readableDatabase.rawQuery("SELECT place, matched, at FROM gplace WHERE id=?", arrayOf(e.id.toString())).use { c ->
             if (c.moveToFirst()) {
@@ -218,7 +225,7 @@ class GoogleClient(
         return KeyCheck.Ok
     }
 
-    internal data class Candidate(val id: String, val name: String, val lat: Double?, val lon: Double?)
+    internal data class Candidate(val id: String, val name: String, val lat: Double?, val lon: Double?, val address: String? = null)
 
     companion object {
         private const val DAY = 24L * 60 * 60 * 1000
@@ -226,10 +233,10 @@ class GoogleClient(
         private const val YEAR = 365 * DAY
 
         /** Pro tier: enough to check the match before paying for details. */
-        const val SEARCH_FIELDS = "places.id,places.displayName,places.location"
+        const val SEARCH_FIELDS = "places.id,places.displayName,places.location,places.formattedAddress"
 
         /** Enterprise tier (rating, hours, phone, website). Reviews are left out: they cost more and need author credits. */
-        const val DETAIL_FIELDS = "id,businessStatus,googleMapsUri,rating,userRatingCount,currentOpeningHours,regularOpeningHours,nationalPhoneNumber,websiteUri"
+        const val DETAIL_FIELDS = "id,businessStatus,googleMapsUri,rating,userRatingCount,currentOpeningHours,regularOpeningHours,nationalPhoneNumber,websiteUri,attributions"
 
         internal fun parseCandidates(o: JSONObject): List<Candidate> {
             val places = o.optJSONArray("places") ?: return emptyList()
@@ -242,6 +249,7 @@ class GoogleClient(
                     name = p.optJSONObject("displayName")?.optString("text").orEmpty(),
                     lat = loc?.optDouble("latitude")?.takeUnless { it.isNaN() },
                     lon = loc?.optDouble("longitude")?.takeUnless { it.isNaN() },
+                    address = p.optString("formattedAddress").ifEmpty { null },
                 )
             }
         }
@@ -260,49 +268,90 @@ class GoogleClient(
                 website = o.optString("websiteUri").ifEmpty { null }?.takeIf { it.startsWith("https://") || it.startsWith("http://") },
                 mapsUri = o.optString("googleMapsUri").ifEmpty { null }?.takeIf { it.startsWith("https://") },
                 permanentlyClosed = o.optString("businessStatus") == "CLOSED_PERMANENTLY",
+                attributions = o.optJSONArray("attributions")?.let { a ->
+                    (0 until a.length()).mapNotNull { i ->
+                        val x = a.optJSONObject(i) ?: return@mapNotNull null
+                        val provider = x.optString("provider").ifBlank { return@mapNotNull null }
+                        GooglePlace.Attribution(provider, x.optString("providerUri").takeIf { it.startsWith("https://") || it.startsWith("http://") })
+                    }
+                }.orEmpty(),
             )
         }
 
         /**
          * Picks the search result that is this business: a similar name close to the FSA position.
-         * Postcode-centre positions are looser, and a business with no position needs a near-exact name.
+         * Postcode-centre positions are looser. With no position at all, the name must match fully and
+         * Google's address must carry the same postcode.
          */
         internal fun bestMatch(e: Establishment, candidates: List<Candidate>): Candidate? {
             val maxDistance = if (e.loc?.approximate == true) 400.0 else 150.0
+            val postcode = e.pcKey
             return candidates
                 .map { c ->
                     val d = if (e.lat != null && e.lon != null && c.lat != null && c.lon != null) Repository.distance(e.lat, e.lon, c.lat, c.lon) else null
                     Triple(c, nameSimilarity(e.name, c.name), d)
                 }
-                .filter { (_, sim, d) ->
+                .filter { (c, sim, d) ->
                     when {
-                        d == null -> sim >= 0.8
-                        d <= 40 -> sim >= 0.34
-                        d <= maxDistance -> sim >= 0.5
-                        else -> false
+                        d != null -> d <= maxDistance && sim >= 0.5
+                        e.lat != null -> false
+                        else -> sim >= 0.99 && postcode != null && c.address?.uppercase()?.replace(" ", "")?.contains(postcode) == true
                     }
                 }
                 .sortedWith(compareByDescending<Triple<Candidate, Double, Double?>> { it.second }.thenBy { it.third ?: Double.MAX_VALUE })
                 .firstOrNull()?.first
         }
 
-        private val STOP = setOf("ltd", "limited", "the", "and", "plc", "llp", "co", "uk", "t", "a", "of")
+        private val STOP = setOf("ltd", "limited", "the", "and", "plc", "llp", "co", "uk", "t", "a", "of", "at", "on", "in", "by")
+
+        /**
+         * Words that say what kind of place it is, or where, rather than which one. Two different cafés
+         * on Station Road share "station", "road" and "cafe", so these never count as a name match.
+         */
+        private val GENERIC = setOf(
+            "cafe", "caffe", "coffee", "tea", "restaurant", "bistro", "brasserie", "bar", "pub", "inn", "hotel", "grill", "kitchen",
+            "house", "express", "takeaway", "take", "away", "food", "foods", "store", "stores", "shop", "market", "supermarket",
+            "convenience", "newsagent", "newsagents", "off", "licence", "wine", "wines", "bakery", "bakers", "deli", "butchers", "butcher",
+            "pizza", "pizzeria", "kebab", "kebabs", "fish", "chips", "chip", "chicken", "burger", "burgers", "indian", "chinese",
+            "thai", "italian", "tandoori", "balti", "curry", "noodle", "noodles", "sushi", "catering", "services", "centre", "center",
+            "club", "station", "road", "street", "lane", "high", "square", "park", "london", "local", "news",
+        )
 
         private fun tokens(s: String): List<String> =
             Normalizer.normalize(s.lowercase(), Normalizer.Form.NFD).replace(Regex("\\p{M}+"), "")
                 .replace("&", " and ").replace(Regex("['’`]"), "")
                 .split(Regex("[^a-z0-9]+")).filter { it.isNotEmpty() && it !in STOP }
 
-        /** 1.0 when one name contains the other (ignoring spaces and filler words), else the share of the shorter name's words found in the other. */
+        /**
+         * 1.0 when one name, ignoring spaces and filler words, is the other or a run of whole words
+         * inside it ("72 China" in "72 China Restaurant", "McDonald's" and "Mc Donalds"). Otherwise the
+         * share of distinctive words they have in common. Kind-of-place words never count.
+         */
         internal fun nameSimilarity(a: String, b: String): Double {
             val ta = tokens(a)
             val tb = tokens(b)
             if (ta.isEmpty() || tb.isEmpty()) return 0.0
-            val ca = ta.joinToString("")
-            val cb = tb.joinToString("")
-            if (ca.contains(cb) || cb.contains(ca)) return 1.0
-            val common = ta.toSet().intersect(tb.toSet()).size
-            return common.toDouble() / minOf(ta.toSet().size, tb.toSet().size)
+            if (ta.joinToString("") == tb.joinToString("")) return 1.0
+            val (short, long) = if (ta.joinToString("").length <= tb.joinToString("").length) ta to tb else tb to ta
+            if (short.any { it !in GENERIC } && containsOnWordBoundaries(long, short.joinToString(""))) return 1.0
+            val da = ta.filter { it !in GENERIC }.toSet()
+            val db = tb.filter { it !in GENERIC }.toSet()
+            if (da.isEmpty() || db.isEmpty()) return 0.0
+            return da.intersect(db).size.toDouble() / minOf(da.size, db.size)
+        }
+
+        /** Whether [needle] (4+ letters) equals some run of consecutive whole tokens of [words], joined. */
+        private fun containsOnWordBoundaries(words: List<String>, needle: String): Boolean {
+            if (needle.length < 4) return words.joinToString("") == needle
+            for (start in words.indices) {
+                val sb = StringBuilder()
+                for (end in start until words.size) {
+                    sb.append(words[end])
+                    if (sb.length == needle.length && sb.toString() == needle) return true
+                    if (sb.length >= needle.length) break
+                }
+            }
+            return false
         }
 
         /** Compass bearing in degrees from one point to another. */

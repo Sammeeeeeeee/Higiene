@@ -539,7 +539,7 @@ private fun GoogleMapsCredit() {
         fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif,
         fontWeight = FontWeight.Normal,
         fontSize = 12.sp,
-        color = if (LocalIsDark.current) Color(0xFFE3E3E3) else Color(0xFF5E5E5E),
+        color = if (LocalIsDark.current) Color.White else Color(0xFF5E5E5E),
         maxLines = 1,
         softWrap = false,
     )
@@ -584,6 +584,12 @@ internal fun GoogleCard(g: GooglePlace) {
         g.phone?.let { p -> ContactRow(Icons.Rounded.Phone, p) { open(context, Uri.parse("tel:" + p.replace(" ", "")), Intent.ACTION_DIAL) } }
         g.website?.let { w -> ContactRow(Icons.Rounded.Public, w.removePrefix("https://").removePrefix("http://").removeSuffix("/")) { open(context, Uri.parse(w)) } }
         g.mapsUri?.let { u -> TextLink(stringResource(R.string.google_open_maps), onClick = { open(context, Uri.parse(u)) }) }
+        // Google requires its data providers to be credited where their data is shown.
+        g.attributions.forEach { a ->
+            val label = stringResource(R.string.google_data_from, a.provider)
+            if (a.uri != null) TextLink(label, onClick = { open(context, Uri.parse(a.uri)) }, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            else Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 

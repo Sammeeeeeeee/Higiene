@@ -128,8 +128,11 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     fun setOsm(v: Boolean) = viewModelScope.launch {
         graph.settings.setOsmDetails(v)
         if (v) {
-            // Fetch the file now rather than at the next scheduled refresh.
-            if (withContext(Dispatchers.IO) { graph.osm.rows() } == 0) Scheduler.refreshNow(getApplication(), graph.settings.current().wifiOnly)
+            // Fetch the file now rather than at the next scheduled refresh. KEEP: a refresh that is
+            // already queued or running reads this setting before its OSM step, so don't restart it.
+            if (withContext(Dispatchers.IO) { graph.osm.rows() } == 0) {
+                Scheduler.refreshNow(getApplication(), graph.settings.current().wifiOnly, policy = androidx.work.ExistingWorkPolicy.KEEP)
+            }
         } else {
             withContext(Dispatchers.IO) { graph.osm.clear() }
             graph.repo.notifyChanged()
@@ -169,11 +172,25 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
 
     fun refreshUsage() = usageTick.update { it + 1 }
 
-    fun saveGoogleKey(key: String) = viewModelScope.launch {
+    private var googleJob: kotlinx.coroutines.Job? = null
+    private var mapillaryJob: kotlinx.coroutines.Job? = null
+
+    /** Saves the key and checks it; a newer save or a removal cancels an unfinished check. */
+    fun saveGoogleKey(key: String) {
+        googleJob?.cancel()
+        googleJob = viewModelScope.launch { checkGoogle(key) }
+    }
+
+    fun saveMapillaryToken(token: String) {
+        mapillaryJob?.cancel()
+        mapillaryJob = viewModelScope.launch { checkMapillary(token) }
+    }
+
+    private suspend fun checkGoogle(key: String) {
         graph.settings.setGoogleKey(key)
         if (key.isBlank()) {
             _googleCheck.value = Check.Idle
-            return@launch
+            return
         }
         _googleCheck.value = Check.Checking
         _googleCheck.value = withContext(Dispatchers.IO) {
@@ -184,11 +201,11 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun saveMapillaryToken(token: String) = viewModelScope.launch {
+    private suspend fun checkMapillary(token: String) {
         graph.settings.setMapillaryToken(token)
         if (token.isBlank()) {
             _mapillaryCheck.value = Check.Idle
-            return@launch
+            return
         }
         _mapillaryCheck.value = Check.Checking
         _mapillaryCheck.value = withContext(Dispatchers.IO) {

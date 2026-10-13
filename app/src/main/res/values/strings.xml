@@ -251,6 +251,7 @@
     <string name="google_closed_now">Closed now</string>
     <string name="google_closed_permanently">Permanently closed, says Google</string>
     <string name="google_open_maps">Open in Google Maps</string>
+    <string name="google_data_from">Data: %1$s</string>
 
     <!-- Settings: your own keys -->
     <string name="keys_title">Photos and Google ratings</string>

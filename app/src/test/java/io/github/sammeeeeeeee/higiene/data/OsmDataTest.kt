@@ -31,8 +31,8 @@ class OsmDataTest {
     }
 
     private val rows = listOf(
-        "53\tw54612199\tMo-Fr 08:00-17:00\tpizza;italian_pizza\twww.example.com\t+44 1475 715824\ta@b.c\t\tQ123\tyes\tyes\tno\t\tvegan,gluten_free",
-        "81\tn400\t\t\tjavascript:alert(1)\t\t\t\t\t\t\t\t\t",
+        "53\tw54612199\tMo-Fr 08:00-17:00\tpizza;italian_pizza\twww.example.com\t+44 1475 715824\tinfo@example.co.uk\t\tQ123\tyes\tyes\tno\t\tvegan,gluten_free",
+        "81\tn400\t\t\tjavascript:alert(1)\t\tx@y.org?bcc=evil@z.org\t\t\t\t\t\t\t",
         "99\tr6\t\t\t\t\t\t\t\t\t\t\t\t",
         "bad\tn1\t\t\t\t\t\t\t\t\t\t\t\t",
         "100\tn2\ttoo\tfew",
@@ -73,6 +73,8 @@ class OsmDataTest {
         // Only web links are accepted from OSM.
         val unsafe = osm.details(81)!!
         assertNull(unsafe.website)
+        assertNull(unsafe.email)
+        assertEquals("info@example.co.uk", d.email)
         assertFalse(unsafe.hasDetails)
         assertEquals("https://www.openstreetmap.org/relation/6", osm.details(99)!!.osmUrl)
         assertNull(osm.details(12345))

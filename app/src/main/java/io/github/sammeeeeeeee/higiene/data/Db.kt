@@ -105,7 +105,13 @@ class Db(context: Context) : SQLiteOpenHelper(context, NAME, null, VERSION) {
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        if (oldVersion < 2) createOsm(db)
+        if (oldVersion < 2) {
+            // Test builds before v0.1 kept an OSM cache (and favourites) here under these names;
+            // both hold nothing the app still reads. The OSM table is refilled from the weekly file.
+            db.execSQL("DROP TABLE IF EXISTS osm")
+            db.execSQL("DROP TABLE IF EXISTS fav")
+            createOsm(db)
+        }
     }
 
     /** OpenStreetMap details by FHRSID, replaced weekly from the published file (see OsmData). */

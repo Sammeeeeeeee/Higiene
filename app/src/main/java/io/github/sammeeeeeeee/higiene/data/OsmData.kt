@@ -15,7 +15,7 @@ data class OsmDetails(
     private val cuisineTag: String? = null,
     private val websiteTag: String? = null,
     val phone: String? = null,
-    val email: String? = null,
+    private val emailTag: String? = null,
     private val menuTag: String? = null,
     val brandQid: String? = null,
     val wheelchair: String? = null,
@@ -29,6 +29,9 @@ data class OsmDetails(
     val menu get() = menuTag?.let { webUrl(it) }
     val diets get() = dietsTag?.split(',')?.map { it.trim().replace('_', '-') }?.filter { it.isNotEmpty() }.orEmpty()
 
+    /** A plain address only: anyone can edit OSM, and extra mailto: parts (?bcc=, &body=) would reach the mail app. */
+    val email get() = emailTag?.trim()?.substringBefore(';')?.trim()?.takeIf { EMAIL.matches(it) }
+
     val osmUrl: String
         get() {
             val type = when (element.firstOrNull()) { 'w' -> "way"; 'r' -> "relation"; else -> "node" }
@@ -41,6 +44,8 @@ data class OsmDetails(
             email != null || menu != null || wheelchair != null || takeaway != null || delivery != null || outdoorSeating != null
 
     internal companion object {
+        private val EMAIL = Regex("^[A-Za-z0-9._%+'-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$")
+
         /** Anyone can edit OSM: accept only web links, adding https:// when the scheme is missing. */
         fun webUrl(raw: String): String? {
             val v = raw.trim().substringBefore(';').trim()
@@ -58,7 +63,7 @@ data class OsmDetails(
             cuisineTag = c.getStringOrNull(2),
             websiteTag = c.getStringOrNull(3),
             phone = c.getStringOrNull(4),
-            email = c.getStringOrNull(5),
+            emailTag = c.getStringOrNull(5),
             menuTag = c.getStringOrNull(6),
             brandQid = c.getStringOrNull(7),
             wheelchair = c.getStringOrNull(8),

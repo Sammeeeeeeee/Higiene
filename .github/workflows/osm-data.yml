@@ -8,6 +8,12 @@ name: OSM data
 on:
   schedule:
     - cron: '23 4 * * 1'
+  # Also when the extractor or this workflow changes on main, so a merge publishes a fresh file at once.
+  push:
+    branches: [main]
+    paths:
+      - tools/osm_extract.py
+      - .github/workflows/osm-data.yml
   workflow_dispatch:
 
 permissions:
@@ -82,7 +88,19 @@ jobs:
           } > notes.md
           cat notes.md
 
+      # Runs on other branches stop here: they build and check the file but never replace the published one.
+      - name: Keep the file (not main)
+        if: github.ref != 'refs/heads/main'
+        uses: actions/upload-artifact@v7
+        with:
+          name: osm-fhrs
+          path: |
+            osm-fhrs.tsv.gz
+            osm-fhrs.tsv.gz.sha256
+            notes.md
+
       - name: Publish
+        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}

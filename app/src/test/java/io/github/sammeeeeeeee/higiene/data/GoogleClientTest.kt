@@ -184,14 +184,43 @@ class GoogleClientTest {
         assertTrue(GoogleClient.nameSimilarity("The Red Lion", "Red Lion Pub") >= 0.99)
         assertTrue(GoogleClient.nameSimilarity("Bagels Bar", "BB Grill House") < 0.34)
         assertEquals(0.0, GoogleClient.nameSimilarity("", "Anything"), 0.0)
+        assertEquals(1.0, GoogleClient.nameSimilarity("The Coffee Shop", "Coffee Shop"), 0.0)
+        assertEquals(1.0, GoogleClient.nameSimilarity("KFC", "KFC Cambridge Station Road"), 0.0)
+    }
+
+    /** Pairs that look alike only by accident must never match. */
+    @Test
+    fun nameSimilarityRejectsLookalikes() {
+        for ((a, b) in listOf(
+            "The Coffee Shop" to "Co-op",
+            "M&S" to "Williams Bakery",
+            "Spar" to "Sparrow Cafe",
+            "Station Cafe" to "Corner Cafe",
+            "Station Road Fish Bar" to "Co-op Food - Station Road",
+            "Sunrise Pizza Kebab" to "Domino's Pizza",
+        )) assertEquals("$a / $b", 0.0, GoogleClient.nameSimilarity(a, b), 0.0)
     }
 
     @Test
-    fun matchNeedsAStrongNameWithoutAPosition() {
+    fun matchNeedsAStrongNameAndThePostcodeWithoutAPosition() {
         val noPos = est.copy(lat = null, lon = null, loc = null)
-        val c = listOf(GoogleClient.Candidate("a", "72 China", 52.2, 0.12))
-        assertEquals("a", GoogleClient.bestMatch(noPos, c)?.id)
-        assertNull(GoogleClient.bestMatch(noPos, listOf(GoogleClient.Candidate("b", "China Garden", 52.2, 0.12))))
+        val here = "72 Regent St, Cambridge CB2 1DP, UK"
+        assertEquals("a", GoogleClient.bestMatch(noPos, listOf(GoogleClient.Candidate("a", "72 China", 52.2, 0.12, here)))?.id)
+        // Same name elsewhere in the country.
+        assertNull(GoogleClient.bestMatch(noPos, listOf(GoogleClient.Candidate("a", "72 China", 51.5, -0.1, "1 High St, London E1 6AN, UK"))))
+        assertNull(GoogleClient.bestMatch(noPos, listOf(GoogleClient.Candidate("b", "China Garden", 52.2, 0.12, here))))
+    }
+
+    @Test
+    fun noPositionAndNoPostcodeMeansNoSearch() {
+        assertNull(google.place(est.copy(lat = null, lon = null, loc = null, pcKey = null), "KEY"))
+        assertTrue(http.requests.isEmpty())
+    }
+
+    @Test
+    fun creditsThirdPartyProviders() {
+        val p = GoogleClient.parsePlace(JSONObject("""{"id":"x","rating":4.0,"attributions":[{"provider":"Example Data Ltd","providerUri":"https://example.org"},{"provider":""}]}"""))
+        assertEquals(listOf(GooglePlace.Attribution("Example Data Ltd", "https://example.org")), p.attributions)
     }
 
     @Test
