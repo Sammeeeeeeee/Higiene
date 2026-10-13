@@ -57,6 +57,10 @@ class DetailViewModel(app: Application, saved: SavedStateHandle) : AndroidViewMo
     val settings: StateFlow<UserSettings> = graph.settings.flow.stateIn(viewModelScope, SharingStarted.Eagerly, UserSettings())
 
     init {
+        // Draw the header and rating at once from the list just shown; the full record follows.
+        graph.recent.get(id)?.let { r ->
+            _state.value = DetailState(loading = false, est = r.est, distanceM = r.distanceM, brand = r.brand, favourite = r.favourite ?: false)
+        }
         viewModelScope.launch {
             graph.repo.version.collect { load() }
         }

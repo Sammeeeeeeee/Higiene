@@ -2,6 +2,19 @@ package io.github.sammeeeeeeee.higiene.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterExitState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Transition
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
@@ -88,7 +101,8 @@ fun Modifier.sharedElement(key: String): Modifier {
         this@sharedElement.sharedElement(
             rememberSharedContentState(key),
             scope,
-            boundsTransform = { _, _ -> spring(dampingRatio = 0.8f, stiffness = 380f) },
+            // Short tweens, so a transition (which holds touches on the screens involved) ends soon after it looks done.
+            boundsTransform = { _, _ -> tween(TRANSITION_MS, easing = FastOutSlowInEasing) },
         )
     }
 }
@@ -102,6 +116,9 @@ private val tabs = listOf(
 )
 
 private val NAV_HEIGHT = 68.dp
+private val NAV_HEIGHT_COMPACT = 52.dp
+private const val TRANSITION_MS = 260
+private const val SCROLL_SLOP = 4f
 private val NAV_MARGIN = 14.dp
 
 @OptIn(ExperimentalSharedTransitionApi::class)
@@ -124,16 +141,30 @@ fun AppNav(openEstablishment: Long?, onOpenedEstablishment: () -> Unit) {
     val bottomSpace: Dp = if (onTab) NAV_HEIGHT + NAV_MARGIN * 2 + navInset else navInset
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background, contentColor = MaterialTheme.colorScheme.onBackground) {
-    Box(Modifier.fillMaxSize()) {
+    // Scrolling down tucks the navigation pill into a smaller one; scrolling back up brings it back.
+    var navCompact by remember { mutableStateOf(false) }
+    val scrollWatcher = remember {
+        object : NestedScrollConnection {
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                if (consumed.y < -SCROLL_SLOP) navCompact = true else if (consumed.y > SCROLL_SLOP) navCompact = false
+                return Offset.Zero
+            }
+        }
+    }
+    LaunchedEffect(route) { navCompact = false }
+    val navHeight by animateDpAsState(if (navCompact) NAV_HEIGHT_COMPACT else NAV_HEIGHT, spring(dampingRatio = 0.85f, stiffness = 500f), label = "navHeight")
+    val navSide by animateDpAsState(if (navCompact) 72.dp else 20.dp, spring(dampingRatio = 0.85f, stiffness = 500f), label = "navSide")
+
+    Box(Modifier.fillMaxSize().nestedScroll(scrollWatcher)) {
         SharedTransitionLayout {
             CompositionLocalProvider(LocalSharedScope provides this, LocalBottomSpace provides bottomSpace) {
                 NavHost(
                     nav,
                     startDestination = "nearby",
-                    enterTransition = { fadeIn(tween(260)) + slideInHorizontally(spring(dampingRatio = 0.9f, stiffness = 500f, visibilityThreshold = IntOffset.VisibilityThreshold)) { it / 6 } },
-                    exitTransition = { fadeOut(tween(180)) },
-                    popEnterTransition = { fadeIn(tween(260)) + scaleIn(initialScale = 0.96f) },
-                    popExitTransition = { fadeOut(tween(200)) + slideOutHorizontally(spring(dampingRatio = 0.9f, stiffness = 500f, visibilityThreshold = IntOffset.VisibilityThreshold)) { it / 6 } },
+                    enterTransition = { fadeIn(tween(220)) + slideInHorizontally(tween(TRANSITION_MS, easing = FastOutSlowInEasing)) { it / 6 } },
+                    exitTransition = { fadeOut(tween(160)) },
+                    popEnterTransition = { fadeIn(tween(220)) + scaleIn(tween(TRANSITION_MS, easing = FastOutSlowInEasing), initialScale = 0.96f) },
+                    popExitTransition = { fadeOut(tween(180)) + slideOutHorizontally(tween(TRANSITION_MS, easing = FastOutSlowInEasing)) { it / 6 } },
                 ) {
                     val open: (Long) -> Unit = { id -> nav.navigate("detail/$id") }
                     val openAddress: (String) -> Unit = { pc -> nav.navigate("address/$pc") }
@@ -142,9 +173,10 @@ fun AppNav(openEstablishment: Long?, onOpenedEstablishment: () -> Unit) {
                     }
                     tab("favourites") { FavouritesScreen(onOpen = open) }
                     tab("settings") { SettingsScreen(onLicences = { nav.navigate("licences") }) }
-                    // Back only from the resumed screen, so a quick double tap can't pop the start page.
+                    // Back only from the page on top, so a quick double tap can't pop the start page, but
+                    // without waiting for its opening animation to finish.
                     fun back(entry: NavBackStackEntry): () -> Unit = {
-                        if (entry.lifecycle.currentState == Lifecycle.State.RESUMED) nav.popBackStack()
+                        if (nav.currentBackStackEntry?.id == entry.id) nav.popBackStack()
                     }
                     screen("licences") { LicencesScreen(onBack = back(it)) }
                     screen("detail/{id}", listOf(navArgument("id") { type = NavType.LongType })) {
@@ -164,7 +196,7 @@ fun AppNav(openEstablishment: Long?, onOpenedEstablishment: () -> Unit) {
         // instead of the navigation library's own swipe-tracking one. Registered after the NavHost so it
         // takes priority; off on the start page so the system can go home.
         BackHandler(enabled = entry != null && nav.previousBackStackEntry != null) {
-            if (entry?.lifecycle?.currentState == Lifecycle.State.RESUMED) nav.popBackStack()
+            nav.popBackStack()
         }
 
         // Soft fade behind the floating pill so list content doesn't clash with it.
@@ -193,7 +225,8 @@ fun AppNav(openEstablishment: Long?, onOpenedEstablishment: () -> Unit) {
                         restoreState = true
                     }
                 },
-                height = NAV_HEIGHT,
+                height = navHeight,
+                labels = !navCompact,
                 track = if (LocalIsDark.current) Color(0xFF123F3E) else Fsa.Ink,
                 indicator = Fsa.Lime,
                 selectedContent = Fsa.Ink,
@@ -201,7 +234,7 @@ fun AppNav(openEstablishment: Long?, onOpenedEstablishment: () -> Unit) {
                 vertical = true,
                 modifier = Modifier
                     .navigationBarsPadding()
-                    .padding(horizontal = 20.dp, vertical = NAV_MARGIN)
+                    .padding(horizontal = navSide, vertical = NAV_MARGIN)
                     .fillMaxWidth()
                     .shadow(20.dp, CircleShape, ambientColor = Color.Black, spotColor = Color.Black)
                     .border(1.dp, Color.White.copy(alpha = if (LocalIsDark.current) 0.08f else 0f), CircleShape),
@@ -219,12 +252,24 @@ private fun NavGraphBuilder.tab(route: String, content: @Composable () -> Unit) 
         popEnterTransition = { fadeIn(tween(220)) },
         popExitTransition = { fadeOut(tween(160)) },
     ) {
-        CompositionLocalProvider(LocalNavScope provides this) { content() }
+        CompositionLocalProvider(LocalNavScope provides this) { Box(Modifier.fillMaxSize().leaving(transition)) { content() } }
     }
 }
 
 private fun NavGraphBuilder.screen(route: String, arguments: List<NamedNavArgument> = emptyList(), content: @Composable (NavBackStackEntry) -> Unit) {
     composable(route, arguments = arguments) { entry ->
-        CompositionLocalProvider(LocalNavScope provides this) { content(entry) }
+        CompositionLocalProvider(LocalNavScope provides this) { Box(Modifier.fillMaxSize().leaving(transition)) { content(entry) } }
     }
 }
+
+/**
+ * A page on its way out still sits over the next one until its animation ends: swallow taps on it
+ * so they can't press buttons that are fading away.
+ */
+private fun Modifier.leaving(transition: Transition<EnterExitState>): Modifier =
+    if (transition.targetState != EnterExitState.PostExit) this
+    else pointerInput(Unit) {
+        awaitPointerEventScope {
+            while (true) awaitPointerEvent(PointerEventPass.Initial).changes.forEach { it.consume() }
+        }
+    }

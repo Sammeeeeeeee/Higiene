@@ -5,6 +5,8 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.verticalScroll
@@ -107,6 +109,17 @@ class ScreenshotTest {
         compose.onNodeWithText("Filters").performClick()
         settle()
         compose.onRoot().captureRoboImage("$out/09-filters.png")
+    }
+
+    /** Scrolling down tucks the navigation pill away into a smaller one. */
+    @Test
+    fun nearbyScrolled() {
+        importSample()
+        compose.setContent { HigieneTheme { AppNav(openEstablishment = null, onOpenedEstablishment = {}) } }
+        settle()
+        compose.onRoot().performTouchInput { swipeUp(startY = centerY + 300f, endY = centerY - 300f) }
+        settle()
+        compose.onRoot().captureRoboImage("$out/14-nearby-scrolled.png")
     }
 
     @Test

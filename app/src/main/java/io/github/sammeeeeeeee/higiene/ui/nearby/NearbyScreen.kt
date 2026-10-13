@@ -1,5 +1,8 @@
 package io.github.sammeeeeeeee.higiene.ui.nearby
 
+import androidx.compose.runtime.remember
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 import android.Manifest
 import android.content.Intent
 import android.provider.Settings
@@ -168,13 +171,34 @@ fun NearbyScreen(
                     bottomPadding = 20,
                 ) {
                     SearchField(state.query, vm::setQuery)
-                    if (refresh.running) RefreshStrip(refresh)
+                    when {
+                        refresh.running -> RefreshStrip(refresh)
+                        refresh.waiting && refresh.waitingForWifi -> Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(stringResource(R.string.waiting_for_wifi), style = MaterialTheme.typography.labelSmall, color = LocalHero.current.body.copy(alpha = 0.85f), modifier = Modifier.weight(1f))
+                            TextLink(stringResource(R.string.use_mobile_data), onClick = { vm.useMobileData() }, color = Fsa.Lime)
+                        }
+                    }
                 }
                 FilterRow(state.filters, onOpenFilters = { showFilters = true }, onChange = vm::setFilters)
-                // Pull down to re-centre on your current position.
+                // Pull down to check for new ratings (and find your position again if the list follows it).
+                // "starting" covers the moment before the check begins, so the spinner doesn't blink off;
+                // "following" keeps it for this pull only, not for background updates.
+                var starting by remember { mutableStateOf(false) }
+                var following by remember { mutableStateOf(false) }
+                val busy = state.locating || refresh.running
+                LaunchedEffect(busy, starting) { if (!busy && !starting) following = false }
+                val scope = rememberCoroutineScope()
                 androidx.compose.material3.pulltorefresh.PullToRefreshBox(
-                    isRefreshing = state.locating,
-                    onRefresh = locate,
+                    isRefreshing = starting || (following && busy),
+                    onRefresh = {
+                        starting = true
+                        following = true
+                        vm.pullRefresh()
+                        scope.launch {
+                            kotlinx.coroutines.delay(1200)
+                            starting = false
+                        }
+                    },
                     modifier = Modifier.weight(1f),
                 ) {
                     Results(

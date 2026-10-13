@@ -10,6 +10,7 @@ import io.github.sammeeeeeeee.higiene.data.Centre
 import io.github.sammeeeeeeee.higiene.data.Filters
 import io.github.sammeeeeeeee.higiene.data.Listing
 import io.github.sammeeeeeeee.higiene.data.Postcodes
+import io.github.sammeeeeeeee.higiene.data.RecentListings
 import io.github.sammeeeeeeee.higiene.data.Repository
 import io.github.sammeeeeeeee.higiene.data.UserSettings
 import io.github.sammeeeeeeee.higiene.location.LocationHelper
@@ -117,6 +118,7 @@ class NearbyViewModel(app: Application) : AndroidViewModel(app) {
                 else -> Loaded(emptyList(), null, types, place, full)
             }
         }
+        graph.recent.put(result.rows.map { RecentListings.Item(it.listing.est, it.listing.distanceM, it.brand) })
         val checked = withContext(Dispatchers.IO) { graph.repo.dataInfo().checkedAt }
         _state.update {
             it.copy(
@@ -170,6 +172,20 @@ class NearbyViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun dismissLocationProblem() = _state.update { it.copy(locationProblem = null) }
+
+    /**
+     * Pull to refresh: check the FSA for newer ratings (a quick check when nothing changed), and if
+     * the list follows your position, find it again. A place you chose stays chosen.
+     */
+    fun pullRefresh() {
+        val c = _state.value.centre
+        if (c == null || c.fromGps) useMyLocation(quiet = true)
+        viewModelScope.launch {
+            Scheduler.refreshNow(getApplication(), graph.settings.current().wifiOnly, policy = androidx.work.ExistingWorkPolicy.KEEP)
+        }
+    }
+
+    fun useMobileData() = viewModelScope.launch { Scheduler.refreshNow(getApplication(), graph.settings.current().wifiOnly, anyNetwork = true) }
 
     fun permissionDenied() = _state.update { it.copy(locating = false, locationProblem = LocationProblem.NO_PERMISSION) }
 

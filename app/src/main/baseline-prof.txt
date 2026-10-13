@@ -1,0 +1,5 @@
+# Baseline profile: ask Android to compile all of Higiene's own code ahead of time after install
+# (installed by androidx.profileinstaller), so the first tap on a business doesn't wait for the JIT.
+# The Compose and AndroidX libraries ship their own profiles, which are merged in too.
+HSPLio/github/sammeeeeeeee/higiene/**->**(**)**
+Lio/github/sammeeeeeeee/higiene/**;

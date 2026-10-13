@@ -1,5 +1,10 @@
 package io.github.sammeeeeeeee.higiene.ui.components
 
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
@@ -97,6 +102,8 @@ fun SegmentedPills(
     selectedContent: Color = Fsa.Ink,
     content: Color = MaterialTheme.colorScheme.onSurface,
     vertical: Boolean = false,
+    /** False shows icons only (with the label read out instead), for a tucked-away pill. */
+    labels: Boolean = true,
 ) {
     val haptics = LocalHapticFeedback.current
     BoxWithConstraints(
@@ -145,8 +152,10 @@ fun SegmentedPills(
                 ) {
                     if (vertical && item.icon != null) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(item.icon, contentDescription = null, tint = color, modifier = Modifier.size(22.dp))
-                            Text(item.label, color = color, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                            Icon(item.icon, contentDescription = if (labels) null else item.label, tint = color, modifier = Modifier.size(22.dp))
+                            AnimatedVisibility(labels, enter = fadeIn() + expandVertically(), exit = fadeOut() + shrinkVertically()) {
+                                Text(item.label, color = color, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                            }
                         }
                     } else {
                         Row(verticalAlignment = Alignment.CenterVertically) {

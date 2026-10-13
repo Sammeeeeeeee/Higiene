@@ -110,7 +110,7 @@ fun DisplayTitle(text: String, modifier: Modifier = Modifier) {
 fun Reveal(index: Int, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     val progress = remember { Animatable(0f) }
     LaunchedEffect(Unit) {
-        progress.animateTo(1f, animationSpec = tween(durationMillis = 420, delayMillis = 60 * index.coerceAtMost(8), easing = FastOutSlowInEasing))
+        progress.animateTo(1f, animationSpec = tween(durationMillis = 320, delayMillis = 40 * index.coerceAtMost(8), easing = FastOutSlowInEasing))
     }
     Box(
         modifier.graphicsLayer {

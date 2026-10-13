@@ -61,6 +61,7 @@ class AppGraph(context: Context) {
     val codePoint = CodePointImporter(db, http, postcodeFile)
     val authorities = Authorities(app, db, http)
     val osm = OsmData(db, http)
+    val recent = io.github.sammeeeeeeee.higiene.data.RecentListings()
     val identity = AppIdentity.of(app)
     val budget = ApiBudget(userDb)
     val google = GoogleClient(http, userDb, budget, identity)

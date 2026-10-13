@@ -70,6 +70,7 @@ class ListViewModel(app: Application, saved: SavedStateHandle) : AndroidViewMode
                 else -> emptyList()
             }
             fun brand(e: Establishment) = if (s.brandLogos) graph.brands.match(e.name) else null
+            graph.recent.put(list.map { io.github.sammeeeeeeee.higiene.data.RecentListings.Item(it, null, brand(it)) })
             if (pc != null) {
                 list.groupBy { it.siteKey ?: it.address ?: "" }
                     .map { (_, g) -> Site(g.first().address ?: "", g.map { it to brand(it) }) }
