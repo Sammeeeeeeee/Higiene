@@ -173,7 +173,7 @@ fun NearbyScreen(
                     SearchField(state.query, vm::setQuery)
                     when {
                         refresh.running -> RefreshStrip(refresh)
-                        refresh.waiting && refresh.waitingForWifi -> Row(verticalAlignment = Alignment.CenterVertically) {
+                        (refresh.waiting || refresh.retrying) && refresh.waitingForWifi -> Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(stringResource(R.string.waiting_for_wifi), style = MaterialTheme.typography.labelSmall, color = LocalHero.current.body.copy(alpha = 0.85f), modifier = Modifier.weight(1f))
                             TextLink(stringResource(R.string.use_mobile_data), onClick = { vm.useMobileData() }, color = Fsa.Lime)
                         }

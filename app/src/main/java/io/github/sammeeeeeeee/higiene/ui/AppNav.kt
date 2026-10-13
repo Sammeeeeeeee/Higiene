@@ -102,7 +102,7 @@ fun Modifier.sharedElement(key: String): Modifier {
             rememberSharedContentState(key),
             scope,
             // Short tweens, so a transition (which holds touches on the screens involved) ends soon after it looks done.
-            boundsTransform = { _, _ -> tween(TRANSITION_MS, easing = FastOutSlowInEasing) },
+            boundsTransform = { _, _ -> tween(SHARED_MS, easing = FastOutSlowInEasing) },
         )
     }
 }
@@ -118,6 +118,8 @@ private val tabs = listOf(
 private val NAV_HEIGHT = 68.dp
 private val NAV_HEIGHT_COMPACT = 52.dp
 private const val TRANSITION_MS = 260
+private const val POP_MS = 150
+private const val SHARED_MS = 200
 private const val SCROLL_SLOP = 4f
 private val NAV_MARGIN = 14.dp
 
@@ -146,6 +148,9 @@ fun AppNav(openEstablishment: Long?, onOpenedEstablishment: () -> Unit) {
     val scrollWatcher = remember {
         object : NestedScrollConnection {
             override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                // Only the user's own drags: a fling still running on a page that is leaving must not
+                // tuck the bar away again on the page you arrive at.
+                if (source != NestedScrollSource.UserInput) return Offset.Zero
                 if (consumed.y < -SCROLL_SLOP) navCompact = true else if (consumed.y > SCROLL_SLOP) navCompact = false
                 return Offset.Zero
             }
@@ -164,7 +169,9 @@ fun AppNav(openEstablishment: Long?, onOpenedEstablishment: () -> Unit) {
                     enterTransition = { fadeIn(tween(220)) + slideInHorizontally(tween(TRANSITION_MS, easing = FastOutSlowInEasing)) { it / 6 } },
                     exitTransition = { fadeOut(tween(160)) },
                     popEnterTransition = { fadeIn(tween(220)) + scaleIn(tween(TRANSITION_MS, easing = FastOutSlowInEasing), initialScale = 0.96f) },
-                    popExitTransition = { fadeOut(tween(180)) + slideOutHorizontally(tween(TRANSITION_MS, easing = FastOutSlowInEasing)) { it / 6 } },
+                    // On the way back the leaving page is drawn on top and holds touches until it is gone, so
+                    // it leaves quickly and the page underneath can be used at once.
+                    popExitTransition = { fadeOut(tween(POP_MS)) + slideOutHorizontally(tween(POP_MS, easing = FastOutSlowInEasing)) { it / 10 } },
                 ) {
                     val open: (Long) -> Unit = { id -> nav.navigate("detail/$id") }
                     val openAddress: (String) -> Unit = { pc -> nav.navigate("address/$pc") }
@@ -196,7 +203,8 @@ fun AppNav(openEstablishment: Long?, onOpenedEstablishment: () -> Unit) {
         // instead of the navigation library's own swipe-tracking one. Registered after the NavHost so it
         // takes priority; off on the start page so the system can go home.
         BackHandler(enabled = entry != null && nav.previousBackStackEntry != null) {
-            nav.popBackStack()
+            // Checked again here: two quick backs can both arrive before "enabled" catches up.
+            if (nav.previousBackStackEntry != null) nav.popBackStack()
         }
 
         // Soft fade behind the floating pill so list content doesn't clash with it.
@@ -250,7 +258,8 @@ private fun NavGraphBuilder.tab(route: String, content: @Composable () -> Unit) 
         enterTransition = { fadeIn(tween(220)) },
         exitTransition = { fadeOut(tween(160)) },
         popEnterTransition = { fadeIn(tween(220)) },
-        popExitTransition = { fadeOut(tween(160)) },
+        // Also a "pop" when switching back to Nearby (popUpTo), so it leaves quickly for the same reason.
+        popExitTransition = { fadeOut(tween(100)) },
     ) {
         CompositionLocalProvider(LocalNavScope provides this) { Box(Modifier.fillMaxSize().leaving(transition)) { content() } }
     }

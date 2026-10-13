@@ -53,7 +53,7 @@ class FavouritesViewModel(app: Application) : AndroidViewModel(app) {
         .map { s ->
             graph.repo.favourites(s.lastCentre).map { Item(it, if (s.brandLogos && it.listing != null) graph.brands.match(it.name) else null) }
                 .also { items ->
-                    graph.recent.put(items.mapNotNull { i -> i.fav.listing?.let { io.github.sammeeeeeeee.higiene.data.RecentListings.Item(it.est, it.distanceM, i.brand, favourite = true) } })
+                    graph.recent.put(items.mapNotNull { i -> i.fav.listing?.let { io.github.sammeeeeeeee.higiene.data.RecentListings.Item(it.est, it.distanceM, i.brand) } })
                 }
         }
         .flowOn(Dispatchers.IO)

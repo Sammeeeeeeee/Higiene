@@ -181,7 +181,9 @@ class NearbyViewModel(app: Application) : AndroidViewModel(app) {
         val c = _state.value.centre
         if (c == null || c.fromGps) useMyLocation(quiet = true)
         viewModelScope.launch {
-            Scheduler.refreshNow(getApplication(), graph.settings.current().wifiOnly, policy = androidx.work.ExistingWorkPolicy.KEEP)
+            // Leave a check that is running alone; restart one that is waiting out a retry or for Wi-Fi.
+            val policy = if (refresh.value.running) androidx.work.ExistingWorkPolicy.KEEP else androidx.work.ExistingWorkPolicy.REPLACE
+            Scheduler.refreshNow(getApplication(), graph.settings.current().wifiOnly, policy = policy)
         }
     }
 

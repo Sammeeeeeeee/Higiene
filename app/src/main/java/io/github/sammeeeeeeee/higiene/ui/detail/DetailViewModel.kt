@@ -29,6 +29,8 @@ data class DetailState(
     val est: Establishment? = null,
     val distanceM: Double? = null,
     val favourite: Boolean = false,
+    /** False while the page is drawn from the list and the favourite state isn't read yet. */
+    val favouriteKnown: Boolean = true,
     val favouriteName: String? = null,
     val brand: Brands.Brand? = null,
     /** From OSM brand:wikidata; preferred over name matching. */
@@ -59,7 +61,7 @@ class DetailViewModel(app: Application, saved: SavedStateHandle) : AndroidViewMo
     init {
         // Draw the header and rating at once from the list just shown; the full record follows.
         graph.recent.get(id)?.let { r ->
-            _state.value = DetailState(loading = false, est = r.est, distanceM = r.distanceM, brand = r.brand, favourite = r.favourite ?: false)
+            _state.value = DetailState(loading = false, est = r.est, distanceM = r.distanceM, brand = r.brand, favouriteKnown = false)
         }
         viewModelScope.launch {
             graph.repo.version.collect { load() }
@@ -140,6 +142,7 @@ class DetailViewModel(app: Application, saved: SavedStateHandle) : AndroidViewMo
     fun googlePhotoFailed() = _state.update { it.copy(googlePhoto = null) }
 
     fun toggleFavourite(): Boolean {
+        if (!_state.value.favouriteKnown) return false
         val on = !_state.value.favourite
         val name = _state.value.est?.name ?: _state.value.favouriteName ?: return false
         _state.update { it.copy(favourite = on) }

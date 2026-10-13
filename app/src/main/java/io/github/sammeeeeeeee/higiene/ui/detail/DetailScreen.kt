@@ -166,7 +166,7 @@ fun DetailScreen(onBack: () -> Unit, onOpen: (Long) -> Unit, onOpenAddress: (Str
                     Spacer(Modifier.width(10.dp))
                 }
                 // Also shown for a favourite that has left the FSA data, so it can be removed.
-                if (e != null || state.favourite) {
+                if ((e != null || state.favourite) && state.favouriteKnown) {
                     val pop = rememberPop(state.favourite)
                     HeroIconButton(
                         if (state.favourite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
