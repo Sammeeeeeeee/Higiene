@@ -69,6 +69,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -693,7 +694,15 @@ private fun AccessRow(a: GooglePlace.Access) {
                     R.string.google_access_seating to a.seating,
                     R.string.google_access_parking to a.parking,
                 ).forEach { (label, v) ->
-                    if (v != null) Tag(stringResource(label), icon = if (v) Icons.Rounded.Check else Icons.Rounded.Close, strong = v)
+                    if (v == null) return@forEach
+                    // The tick or cross is only a picture: say yes or no for screen readers too.
+                    val said = stringResource(if (v) R.string.google_access_yes else R.string.google_access_no, stringResource(label))
+                    Tag(
+                        stringResource(label),
+                        modifier = Modifier.clearAndSetSemantics { contentDescription = said },
+                        icon = if (v) Icons.Rounded.Check else Icons.Rounded.Close,
+                        strong = v,
+                    )
                 }
             }
         }

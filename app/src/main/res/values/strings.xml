@@ -265,6 +265,8 @@
     <string name="google_access_toilet">Toilet</string>
     <string name="google_access_seating">Seating</string>
     <string name="google_access_parking">Parking</string>
+    <string name="google_access_yes">%1$s: wheelchair accessible</string>
+    <string name="google_access_no">%1$s: not wheelchair accessible</string>
     <string name="google_read_reviews">Read reviews on Google Maps</string>
     <string name="google_write_review">Write a review</string>
     <string name="google_photo_desc">Photo of %1$s from Google Maps</string>
