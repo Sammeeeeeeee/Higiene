@@ -242,7 +242,6 @@
     <string name="photo_taken">Image %1$s</string>
     <string name="photo_mapillary_by">Photo: %1$s on Mapillary · CC BY-SA 4.0</string>
     <string name="photo_mapillary">Photo on Mapillary · CC BY-SA 4.0</string>
-    <string name="google_title">On Google</string>
     <plurals name="google_reviews">
         <item quantity="one">%1$s review</item>
         <item quantity="other">%1$s reviews</item>
@@ -265,6 +264,8 @@
     <string name="google_access_toilet">Toilet</string>
     <string name="google_access_seating">Seating</string>
     <string name="google_access_parking">Parking</string>
+    <string name="google_access_yes">%1$s: wheelchair accessible</string>
+    <string name="google_access_no">%1$s: not wheelchair accessible</string>
     <string name="google_read_reviews">Read reviews on Google Maps</string>
     <string name="google_write_review">Write a review</string>
     <string name="google_photo_desc">Photo of %1$s from Google Maps</string>

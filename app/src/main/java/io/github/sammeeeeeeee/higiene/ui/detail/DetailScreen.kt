@@ -1,5 +1,6 @@
 package io.github.sammeeeeeeee.higiene.ui.detail
 
+import androidx.compose.ui.semantics.Role
 import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.Context
@@ -69,6 +70,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -164,7 +166,7 @@ fun DetailScreen(onBack: () -> Unit, onOpen: (Long) -> Unit, onOpenAddress: (Str
                     Spacer(Modifier.width(10.dp))
                 }
                 // Also shown for a favourite that has left the FSA data, so it can be removed.
-                if (e != null || state.favourite) {
+                if ((e != null || state.favourite) && state.favouriteKnown) {
                     val pop = rememberPop(state.favourite)
                     HeroIconButton(
                         if (state.favourite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
@@ -556,10 +558,6 @@ private fun GoogleMapsCredit() {
 internal fun GoogleCard(g: GooglePlace, photo: GooglePhotoShown? = null, name: String = "", onPhotoFailed: () -> Unit = {}) {
     val context = LocalContext.current
     InfoCard {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(R.string.google_title), style = LocalDisplay.current.section, modifier = Modifier.weight(1f))
-            GoogleMapsCredit()
-        }
         // Google's own warning comes first, before the rating it may concern.
         g.alert?.let { AlertBox(it) }
         photo?.let { GooglePhotoView(it, name, onPhotoFailed) }
@@ -619,13 +617,30 @@ internal fun GoogleCard(g: GooglePlace, photo: GooglePhotoShown? = null, name: S
             (g.reviewsUri ?: g.mapsUri)?.let { u -> TextLink(stringResource(if (g.reviewsUri != null) R.string.google_read_reviews else R.string.google_open_maps), onClick = { open(context, Uri.parse(u)) }) }
             g.writeReviewUri?.let { u -> TextLink(stringResource(R.string.google_write_review), onClick = { open(context, Uri.parse(u)) }) }
         }
-        // Google requires its data providers to be credited where their data is shown.
-        g.attributions.forEach { a ->
-            val label = stringResource(R.string.google_data_from, a.provider)
-            if (a.uri != null) TextLink(label, onClick = { open(context, Uri.parse(a.uri)) }, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            else Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        // Google's terms require the words "Google Maps" with its data when no Google map is shown,
+        // and a credit for any data provider it names. Kept small, at the end.
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            GoogleMapsCredit()
+            g.attributions.forEach { a ->
+                Spacer(Modifier.width(10.dp))
+                SmallCredit(stringResource(R.string.google_data_from, a.provider), a.uri)
+            }
         }
     }
+}
+
+/** A small, quiet credit line that opens [uri] when tapped. */
+@Composable
+private fun SmallCredit(text: String, uri: String?) {
+    val context = LocalContext.current
+    Text(
+        text,
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = if (uri != null) Modifier.clip(RoundedCornerShape(6.dp)).tactileClick(haptic = null, role = Role.Button) { open(context, Uri.parse(uri)) } else Modifier,
+    )
 }
 
 /** Google's consumer alert, word for word, with its own link. */
@@ -657,7 +672,7 @@ private fun GooglePhotoView(p: GooglePhotoShown, name: String, onFailed: () -> U
     val request = remember(p.uri) {
         ImageRequest.Builder(context).data(p.uri).diskCachePolicy(CachePolicy.DISABLED).crossfade(true).build()
     }
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         AsyncImage(
             model = request,
             contentDescription = stringResource(R.string.google_photo_desc, name),
@@ -670,11 +685,7 @@ private fun GooglePhotoView(p: GooglePhotoShown, name: String, onFailed: () -> U
                 .background(MaterialTheme.colorScheme.outlineVariant)
                 .then(if (p.photo.mapsUri != null) Modifier.tactileClick { open(context, Uri.parse(p.photo.mapsUri)) } else Modifier),
         )
-        p.photo.authors.firstOrNull()?.let { a ->
-            val label = stringResource(R.string.google_photo_by, a.name)
-            if (a.uri != null) TextLink(label, onClick = { open(context, Uri.parse(a.uri)) }, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            else Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+        p.photo.authors.firstOrNull()?.let { a -> SmallCredit(stringResource(R.string.google_photo_by, a.name), a.uri) }
     }
 }
 
@@ -693,7 +704,15 @@ private fun AccessRow(a: GooglePlace.Access) {
                     R.string.google_access_seating to a.seating,
                     R.string.google_access_parking to a.parking,
                 ).forEach { (label, v) ->
-                    if (v != null) Tag(stringResource(label), icon = if (v) Icons.Rounded.Check else Icons.Rounded.Close, strong = v)
+                    if (v == null) return@forEach
+                    // The tick or cross is only a picture: say yes or no for screen readers too.
+                    val said = stringResource(if (v) R.string.google_access_yes else R.string.google_access_no, stringResource(label))
+                    Tag(
+                        stringResource(label),
+                        modifier = Modifier.clearAndSetSemantics { contentDescription = said },
+                        icon = if (v) Icons.Rounded.Check else Icons.Rounded.Close,
+                        strong = v,
+                    )
                 }
             }
         }

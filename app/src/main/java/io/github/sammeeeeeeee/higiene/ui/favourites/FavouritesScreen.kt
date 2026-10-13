@@ -50,7 +50,12 @@ class FavouritesViewModel(app: Application) : AndroidViewModel(app) {
     data class Item(val fav: Repository.Favourite, val brand: Brands.Brand?)
 
     val items: StateFlow<List<Item>?> = combine(graph.repo.version, graph.settings.flow) { _, s -> s }
-        .map { s -> graph.repo.favourites(s.lastCentre).map { Item(it, if (s.brandLogos && it.listing != null) graph.brands.match(it.name) else null) } }
+        .map { s ->
+            graph.repo.favourites(s.lastCentre).map { Item(it, if (s.brandLogos && it.listing != null) graph.brands.match(it.name) else null) }
+                .also { items ->
+                    graph.recent.put(items.mapNotNull { i -> i.fav.listing?.let { io.github.sammeeeeeeee.higiene.data.RecentListings.Item(it.est, it.distanceM, i.brand) } })
+                }
+        }
         .flowOn(Dispatchers.IO)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 }

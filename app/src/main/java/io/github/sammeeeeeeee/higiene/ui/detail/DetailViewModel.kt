@@ -14,6 +14,7 @@ import io.github.sammeeeeeeee.higiene.data.StreetPhoto
 import io.github.sammeeeeeeee.higiene.data.Repository
 import io.github.sammeeeeeeee.higiene.data.UserSettings
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -28,6 +29,8 @@ data class DetailState(
     val est: Establishment? = null,
     val distanceM: Double? = null,
     val favourite: Boolean = false,
+    /** False while the page is drawn from the list and the favourite state isn't read yet. */
+    val favouriteKnown: Boolean = true,
     val favouriteName: String? = null,
     val brand: Brands.Brand? = null,
     /** From OSM brand:wikidata; preferred over name matching. */
@@ -56,6 +59,10 @@ class DetailViewModel(app: Application, saved: SavedStateHandle) : AndroidViewMo
     val settings: StateFlow<UserSettings> = graph.settings.flow.stateIn(viewModelScope, SharingStarted.Eagerly, UserSettings())
 
     init {
+        // Draw the header and rating at once from the list just shown; the full record follows.
+        graph.recent.get(id)?.let { r ->
+            _state.value = DetailState(loading = false, est = r.est, distanceM = r.distanceM, brand = r.brand, favouriteKnown = false)
+        }
         viewModelScope.launch {
             graph.repo.version.collect { load() }
         }
@@ -102,31 +109,32 @@ class DetailViewModel(app: Application, saved: SavedStateHandle) : AndroidViewMo
      * reached, key refused, offline) just leaves the card out.
      */
     private fun loadExtras(e: Establishment, s: UserSettings) {
-        if (s.googleKey.isNotBlank()) {
+        val place = if (s.googleKey.isNotBlank()) {
+            viewModelScope.async(Dispatchers.IO) { runCatching { graph.google.place(e, s.googleKey) }.getOrNull() }
+        } else null
+        if (place != null) {
             viewModelScope.launch {
-                val place = withContext(Dispatchers.IO) { runCatching { graph.google.place(e, s.googleKey) }.getOrNull() }
-                if (place == null || !place.hasDetails) return@launch
-                // A caterer or van serves people elsewhere: a street photo of its base would mislead.
-                if (place.serviceAreaOnly) streetPhotoDropped = true
-                _state.update { it.copy(google = place, photo = if (place.serviceAreaOnly) null else it.photo) }
-                val first = place.photos.firstOrNull { it.width >= 400 } ?: return@launch
+                val p = place.await()
+                if (p == null || !p.hasDetails) return@launch
+                _state.update { it.copy(google = p) }
+                val first = p.photos.firstOrNull { it.width >= 400 } ?: return@launch
                 val uri = withContext(Dispatchers.IO) { runCatching { graph.google.photoUri(first, s.googleKey) }.getOrNull() }
                 if (uri != null) _state.update { it.copy(googlePhoto = GooglePhotoShown(uri, first)) }
             }
         }
         if (s.googleKey.isNotBlank() || s.mapillaryToken.isNotBlank()) {
             viewModelScope.launch {
+                // A caterer or van serves people elsewhere: a street photo of its base would mislead.
+                // Wait for Google's answer first, so that photo is never fetched, shown or paid for.
+                if (place?.await()?.serviceAreaOnly == true) return@launch
                 val photo = withContext(Dispatchers.IO) {
                     val google = if (s.googleKey.isNotBlank()) runCatching { graph.google.streetPhoto(e, s.googleKey) }.getOrNull() else null
                     google ?: if (s.mapillaryToken.isNotBlank()) runCatching { graph.mapillary.photo(e, s.mapillaryToken) }.getOrNull() else null
                 }
-                if (photo != null && !streetPhotoDropped) _state.update { it.copy(photo = photo) }
+                if (photo != null) _state.update { it.copy(photo = photo) }
             }
         }
     }
-
-    /** Set from the main thread when Google says the business serves customers elsewhere. */
-    private var streetPhotoDropped = false
 
     /** The image itself failed to load (e.g. the key is not enabled for Street View): drop the card. */
     fun photoFailed() = _state.update { it.copy(photo = null) }
@@ -134,6 +142,7 @@ class DetailViewModel(app: Application, saved: SavedStateHandle) : AndroidViewMo
     fun googlePhotoFailed() = _state.update { it.copy(googlePhoto = null) }
 
     fun toggleFavourite(): Boolean {
+        if (!_state.value.favouriteKnown) return false
         val on = !_state.value.favourite
         val name = _state.value.est?.name ?: _state.value.favouriteName ?: return false
         _state.update { it.copy(favourite = on) }
