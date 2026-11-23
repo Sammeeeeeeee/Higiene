@@ -44,9 +44,10 @@ jobs:
         run: .venv/bin/python -I -m unittest discover -s tools -p 'test_*.py' -v
 
       - name: Download UK extract
+        # --retry alone skips "couldn't connect" errors; --retry-all-errors retries those too (about 3 minutes).
         run: |
-          curl -fsSL --retry 5 --retry-delay 10 -o united-kingdom-latest.osm.pbf https://download.geofabrik.de/europe/united-kingdom-latest.osm.pbf
-          curl -fsSL --retry 5 --retry-delay 10 -o united-kingdom-latest.osm.pbf.md5 https://download.geofabrik.de/europe/united-kingdom-latest.osm.pbf.md5
+          curl -fsSL --retry 6 --retry-delay 30 --retry-all-errors -o united-kingdom-latest.osm.pbf https://download.geofabrik.de/europe/united-kingdom-latest.osm.pbf
+          curl -fsSL --retry 6 --retry-delay 30 --retry-all-errors -o united-kingdom-latest.osm.pbf.md5 https://download.geofabrik.de/europe/united-kingdom-latest.osm.pbf.md5
           md5sum -c united-kingdom-latest.osm.pbf.md5
           ls -l united-kingdom-latest.osm.pbf
 
